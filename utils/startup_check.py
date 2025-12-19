@@ -82,8 +82,8 @@ def check_config():
     print(f"  ✅ config.json ditemukan di: {config_path}")
     
     # Use absolute path for validation
-    valid, errors = validate_config(str(config_path))
-    print_validation_results(valid, errors)
+    valid, errors, warnings = validate_config(str(config_path))
+    print_validation_results(valid, errors, warnings)
     
     return valid
 

@@ -5,9 +5,14 @@ import json
 import os
 from typing import Dict, List, Optional
 
-def validate_config(config_path: str = 'config.json') -> tuple[bool, List[str]]:
-    """Validate config file"""
+def validate_config(config_path: str = 'config.json') -> tuple[bool, List[str], List[str]]:
+    """Validate config file
+    
+    Returns:
+        tuple: (is_valid, errors, warnings)
+    """
     errors = []
+    warnings = []
     
     # Check if file exists
     if not os.path.exists(config_path):
@@ -52,14 +57,14 @@ def validate_config(config_path: str = 'config.json') -> tuple[bool, List[str]]:
             errors.append("❌ Tidak ada bot token yang valid! Minimal 1 token diperlukan.")
         elif len(valid_tokens) < len(tokens):
             placeholder_count = len(tokens) - len(valid_tokens)
-            errors.append(f"⚠️  {placeholder_count} token(s) masih placeholder (akan diabaikan)")
+            warnings.append(f"⚠️  {placeholder_count} token(s) masih placeholder (akan diabaikan)")
         
-        # Check individual tokens
+        # Check individual tokens (only warn, don't error)
         for i, token in enumerate(tokens, 1):
             if not token or token in ['', f'token_bot_{i}_disini']:
                 # Only warn if it's in the first few tokens
                 if i <= 3:
-                    errors.append(f"⚠️  Bot #{i} token belum di-set (masih placeholder)")
+                    warnings.append(f"⚠️  Bot #{i} token belum di-set (masih placeholder)")
     
     # Validate role_ids if exists
     if 'role_ids' in config:
@@ -103,18 +108,29 @@ def validate_config(config_path: str = 'config.json') -> tuple[bool, List[str]]:
             errors.append("❌ 'spotify' harus berupa object")
         else:
             if 'client_id' not in spotify or not spotify['client_id']:
-                errors.append("⚠️  'spotify.client_id' tidak di-set (Spotify API tidak akan bekerja)")
+                warnings.append("⚠️  'spotify.client_id' tidak di-set (Spotify API tidak akan bekerja)")
             if 'client_secret' not in spotify or not spotify['client_secret']:
-                errors.append("⚠️  'spotify.client_secret' tidak di-set (Spotify API tidak akan bekerja)")
+                warnings.append("⚠️  'spotify.client_secret' tidak di-set (Spotify API tidak akan bekerja)")
     
-    return (len(errors) == 0, errors)
+    return (len(errors) == 0, errors, warnings)
 
-def print_validation_results(valid: bool, errors: List[str]):
+def print_validation_results(valid: bool, errors: List[str], warnings: List[str] = None):
     """Print validation results"""
+    if warnings is None:
+        warnings = []
+    
     if valid:
         print("✅ Config file valid!")
+        # Print warnings if any
+        if warnings:
+            for warning in warnings:
+                print(f"  {warning}")
     else:
         print("❌ Config file memiliki error:")
         for error in errors:
             print(f"  {error}")
+        # Also print warnings
+        if warnings:
+            for warning in warnings:
+                print(f"  {warning}")
 
