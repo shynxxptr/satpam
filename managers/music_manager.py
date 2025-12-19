@@ -83,7 +83,7 @@ class MusicManager:
         global MUSIC_LOCK
         MUSIC_LOCK = None
     
-        def get_youtube_info(self, url: str) -> Dict:
+    def get_youtube_info(self, url: str) -> Dict:
         """Get info dari YouTube URL"""
         ydl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
         try:
