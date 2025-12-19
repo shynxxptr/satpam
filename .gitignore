@@ -1,23 +1,43 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Environment variables
 .env
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-venv/
-env/
-ENV/
-.venv
-subscriptions.json
+.env.local
+
+# Config files (sensitive)
 config.json
-statistics.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Data files
+backups/
 queue.json
 schedules.json
+statistics.json
 custom_messages.json
-backups/
-logs/
-*.json
-!config.json.example
-*.log
-.write_test
 
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build
+dist/
+build/
+
+# Python (old - no longer used)
+*.pyc
+__pycache__/
+venv/
+.venv/
