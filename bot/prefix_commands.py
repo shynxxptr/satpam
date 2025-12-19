@@ -5,10 +5,10 @@ import discord
 from discord.ext import commands
 from typing import Optional
 from datetime import datetime, timedelta
-from subscription_manager import subscription_manager
-from statistics import statistics_manager
-from queue_manager import queue_manager
-from notification_manager import notification_manager
+from managers.subscription_manager import subscription_manager
+from managers.statistics import statistics_manager
+from managers.queue_manager import queue_manager
+from managers.notification_manager import notification_manager
 from managers.music_manager import music_manager
 
 def setup_prefix_commands(bot_instance):
@@ -26,7 +26,7 @@ def setup_prefix_commands(bot_instance):
                 return
         
         # Cek apakah channel sudah dijaga bot lain
-        from bot_multi import shared_assignments, channel_timers
+        from bot.bot_multi import shared_assignments, channel_timers
         if channel.id in shared_assignments:
             assigned_bot = shared_assignments[channel.id]
             if assigned_bot != bot_instance.bot_number:
@@ -131,7 +131,7 @@ def setup_prefix_commands(bot_instance):
         bot_instance.is_idle = False
         
         # Remove assignment
-        from bot_multi import shared_assignments, channel_timers
+        from bot.bot_multi import shared_assignments, channel_timers
         if channel.id in shared_assignments:
             del shared_assignments[channel.id]
         if channel.id in channel_timers:
@@ -468,6 +468,17 @@ def setup_prefix_commands(bot_instance):
             )
             
             await ctx.send(embed=embed)
+        
+        @bot_instance.bot.command(name='autoplay', aliases=['ap'])
+        async def autoplay_prefix(ctx):
+            """Enable/disable autoplay"""
+            current_status = music_manager.is_autoplay_enabled()
+            new_status = not current_status
+            
+            music_manager.set_autoplay(new_status)
+            
+            status_text = "✅ **Enabled**" if new_status else "❌ **Disabled**"
+            await ctx.send(f"🔄 **Autoplay:** {status_text}\n{'Bot akan otomatis play lagu terkait setelah queue habis' if new_status else 'Autoplay dinonaktifkan'}")
     
     @bot_instance.bot.command(name='help', aliases=['h', 'commands'])
     async def help_prefix(ctx):

@@ -353,12 +353,15 @@ class SatpamBotInstance:
                 await self.join_idle_channel()
             
             # Setup additional commands
-            from bot_commands import setup_additional_commands
-            setup_additional_commands(self)
+            try:
+                from bot.commands import setup_additional_commands
+                setup_additional_commands(self)
+            except ImportError as e:
+                print(f"⚠️  Bot #{self.bot_number}: Error setting up additional commands: {e}")
             
             # Setup prefix commands
             try:
-                from prefix_commands import setup_prefix_commands
+                from bot.prefix_commands import setup_prefix_commands
                 setup_prefix_commands(self)
                 print(f"💬 Bot #{self.bot_number}: Prefix commands enabled (satpam!)")
             except Exception as e:
@@ -368,7 +371,7 @@ class SatpamBotInstance:
             # Hanya setup jika bot ini enabled untuk music
             if self.music_enabled:
                 try:
-                    from bot_music_commands import setup_music_commands
+                    from bot.music_commands import setup_music_commands
                     setup_music_commands(self)
                     print(f"🎵 Bot #{self.bot_number}: Music commands enabled")
                 except ImportError:
