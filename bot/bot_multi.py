@@ -1108,7 +1108,7 @@ class SatpamBotInstance:
     
     async def _auto_backup_task(self):
         """Auto backup task"""
-        from backup_manager import AUTO_BACKUP_INTERVAL
+        from managers.backup_manager import AUTO_BACKUP_INTERVAL
         
         while True:
             try:
