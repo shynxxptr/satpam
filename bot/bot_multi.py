@@ -1135,9 +1135,18 @@ class SatpamBotInstance:
     
     async def start(self):
         """Start bot instance"""
-        # Start auto-backup task
-        asyncio.create_task(self._auto_backup_task())
-        await self.bot.start(self.token)
+        try:
+            # Start auto-backup task
+            asyncio.create_task(self._auto_backup_task())
+            await self.bot.start(self.token)
+        except discord.errors.LoginFailure as e:
+            print(f"❌ Bot #{self.bot_number}: Login failed - Token tidak valid!")
+            print(f"   Error: {e}")
+            print(f"   💡 Pastikan token Bot #{self.bot_number} valid di config.json")
+            raise
+        except Exception as e:
+            print(f"❌ Bot #{self.bot_number}: Error starting bot: {e}")
+            raise
 
 
 async def main():
@@ -1174,8 +1183,21 @@ async def main():
     # Create bot instances
     bot_instances: List[SatpamBotInstance] = []
     for i, token in enumerate(tokens, start=1):
+        # Validate token format (basic check)
+        if not token or len(token) < 50:
+            print(f"⚠️  Bot #{i}: Token terlalu pendek atau kosong, akan di-skip")
+            continue
+        
         bot_instance = SatpamBotInstance(i, token)
         bot_instances.append(bot_instance)
+    
+    if not bot_instances:
+        print("❌ ERROR: Tidak ada bot instance yang valid untuk dijalankan!")
+        print("💡 Pastikan token di config.json valid dan tidak kosong")
+        return
+    
+    print(f"✅ {len(bot_instances)} bot instance(s) siap untuk dijalankan")
+    print()
     
     # Run all bots concurrently
     tasks = [bot.start() for bot in bot_instances]
