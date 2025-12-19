@@ -1,5 +1,7 @@
-discord.py>=2.3.0
-python-dotenv>=1.0.0
+# Core dependencies with version ranges for safety
+# Allows patch/minor updates but blocks major breaking changes
+discord.py>=2.3.0,<3.0.0  # Allow 2.x updates, block 3.x breaking changes
+python-dotenv>=1.0.0,<2.0.0
 
 # Music features (optional - uncomment if needed)
 # yt-dlp>=2023.12.30

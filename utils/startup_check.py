@@ -52,12 +52,37 @@ def check_config():
     
     print("\n🔍 Checking config file...")
     
-    if not os.path.exists('config.json'):
-        print("  ❌ config.json tidak ditemukan!")
-        print("  💡 Copy config.json.example ke config.json dan edit")
+    # Try multiple locations for config.json
+    script_dir = Path(__file__).parent.parent  # Go up from utils/ to root
+    current_dir = Path.cwd()
+    
+    config_paths = [
+        current_dir / 'config.json',  # Current working directory
+        script_dir / 'config.json',  # Root directory (where script is)
+        Path('config.json'),  # Relative to current dir
+    ]
+    
+    config_path = None
+    for path in config_paths:
+        abs_path = path.resolve()
+        if abs_path.exists():
+            config_path = abs_path
+            break
+    
+    if not config_path or not config_path.exists():
+        print(f"  ❌ config.json tidak ditemukan!")
+        print(f"  💡 Mencari di lokasi:")
+        for path in config_paths:
+            print(f"     - {path.resolve()}")
+        print(f"  💡 Current working directory: {os.getcwd()}")
+        print(f"  💡 Script directory: {script_dir.resolve()}")
+        print(f"  💡 Copy config.json.example ke config.json dan edit")
         return False
     
-    valid, errors = validate_config()
+    print(f"  ✅ config.json ditemukan di: {config_path}")
+    
+    # Use absolute path for validation
+    valid, errors = validate_config(str(config_path))
     print_validation_results(valid, errors)
     
     return valid

@@ -24,18 +24,36 @@ except ImportError:
 # Konfigurasi
 MAX_SATPAM_BOTS = 5  # Jumlah maksimal bot satpam
 
+# Helper function untuk mencari config.json
+def find_config_file():
+    """Find config.json file in multiple possible locations"""
+    config_paths = [
+        'config.json',  # Current directory
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json'),  # Root from bot/
+        os.path.join(os.path.dirname(__file__), '..', 'config.json'),  # Relative from bot/
+        os.path.join(os.getcwd(), 'config.json'),  # Absolute from current working directory
+    ]
+    
+    for config_path in config_paths:
+        abs_path = os.path.abspath(config_path)
+        if os.path.exists(abs_path):
+            return abs_path
+    return None
+
 # Load bot tokens dari config
 def load_bot_tokens():
     """Load bot tokens dari file config atau environment variables"""
     tokens = []
     
     # Coba load dari file config.json
-    try:
-        with open('config.json', 'r') as f:
-            config = json.load(f)
-            tokens = config.get('bot_tokens', [])
-    except FileNotFoundError:
-        pass
+    config_path = find_config_file()
+    if config_path:
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                tokens = config.get('bot_tokens', [])
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
     
     # Filter out empty/placeholder tokens
     if tokens:
@@ -63,14 +81,16 @@ def load_bot_tokens():
 # Load idle voice channel ID dari config
 def load_idle_channel_id():
     """Load idle voice channel ID dari config"""
-    try:
-        with open('config.json', 'r') as f:
-            config = json.load(f)
-            idle_id = config.get('idle_voice_channel_id')
-            if idle_id:
-                return int(idle_id)
-    except (FileNotFoundError, ValueError, KeyError):
-        pass
+    config_path = find_config_file()
+    if config_path:
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                idle_id = config.get('idle_voice_channel_id')
+                if idle_id:
+                    return int(idle_id)
+        except (FileNotFoundError, ValueError, KeyError, json.JSONDecodeError):
+            pass
     
     # Default dari environment variable
     idle_id = os.getenv('IDLE_VOICE_CHANNEL_ID')
@@ -85,14 +105,16 @@ def load_idle_channel_id():
 # Load music enabled bot number dari config
 def load_music_enabled_bot():
     """Load bot number yang enabled untuk music dari config"""
-    try:
-        with open('config.json', 'r') as f:
-            config = json.load(f)
-            music_bot = config.get('music_enabled_bot')
-            if music_bot:
-                return int(music_bot)
-    except (FileNotFoundError, ValueError, KeyError):
-        pass
+    config_path = find_config_file()
+    if config_path:
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                music_bot = config.get('music_enabled_bot')
+                if music_bot:
+                    return int(music_bot)
+        except (FileNotFoundError, ValueError, KeyError, json.JSONDecodeError):
+            pass
     
     # Default dari environment variable
     music_bot = os.getenv('MUSIC_ENABLED_BOT')
