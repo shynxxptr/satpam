@@ -1,0 +1,38 @@
+{
+  "bot_tokens": [
+    "token_bot_1_disini",
+    "token_bot_2_disini",
+    "token_bot_3_disini",
+    "token_bot_4_disini",
+    "token_bot_5_disini"
+  ],
+  "_comment": "Bisa isi 1-5 bot tokens. Token yang kosong/placeholder akan diabaikan.",
+  "role_names": {
+    "donatur": [
+      "Donatur",
+      "donatur",
+      "DONATUR",
+      "Donator",
+      "donator"
+    ],
+    "loyalist": [
+      "Server Loyalist",
+      "Loyalist",
+      "loyalist",
+      "LOYALIST",
+      "Server Loyal",
+      "Loyal"
+    ]
+  },
+  "role_ids": {
+    "donatur": [1450281880233447467],
+    "loyalist": [1451645134700544262]
+  },
+  "idle_voice_channel_id": 1451645891600453652,
+  "music_enabled_bot": 1,
+  "spotify": {
+    "client_id": "your_spotify_client_id_here",
+    "client_secret": "your_spotify_client_secret_here"
+  }
+}
+
