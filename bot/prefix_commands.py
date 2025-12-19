@@ -482,10 +482,14 @@ def setup_prefix_commands(bot_instance):
     
     @bot_instance.bot.command(name='help', aliases=['h', 'commands'])
     async def help_prefix(ctx):
-        """Lihat semua commands"""
+        """Lihat semua commands - hanya Bot #1 yang merespons"""
+        # Hanya Bot #1 yang merespons help command untuk menghindari spam
+        if bot_instance.bot_number != 1:
+            return  # Bot lain tidak merespons
+        
         embed = discord.Embed(
-            title=f"🤖 Satpam Bot #{bot_instance.bot_number} Commands",
-            description="Prefix: `satpam!` atau `satpam#1!` atau `!`",
+            title=f"🤖 Satpam Bot Commands",
+            description="Prefix: `satpam!` atau `satpam#1!` atau `!`\n\n**Semua bot menggunakan commands yang sama**",
             color=discord.Color.blue()
         )
         

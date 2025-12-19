@@ -1,0 +1,18 @@
+[Unit]
+Description=Satpam Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/satpam
+Environment="PATH=/root/satpam/venv/bin"
+ExecStart=/root/satpam/venv/bin/python /root/satpam/run_multi.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
