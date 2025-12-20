@@ -2,12 +2,12 @@
   "name": "satpam-discord-bot",
   "version": "2.0.0",
   "description": "Discord bot untuk jaga voice channel dengan multiple bot instances",
-  "main": "src/index.js",
+  "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
-    "test": "node src/utils/startupCheck.js"
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node utils/startupCheck.js"
   },
   "keywords": [
     "discord",

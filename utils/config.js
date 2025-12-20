@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 export function loadConfig() {
     const configPaths = [
         path.join(process.cwd(), 'config.json'),
-        path.join(__dirname, '../../config.json'),
+        path.join(__dirname, '../config.json'),
     ];
 
     for (const configPath of configPaths) {

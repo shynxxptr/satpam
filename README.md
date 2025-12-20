@@ -48,23 +48,24 @@ npm start
 
 ```
 satpam/
-├── src/
-│   ├── index.js              # Main entry point
-│   ├── bot/
-│   │   ├── BotInstance.js    # Bot instance class
-│   │   ├── commands.js        # Slash commands
-│   │   └── prefixCommands.js  # Prefix commands
-│   ├── managers/
-│   │   ├── tierManager.js     # Tier/subscription manager
-│   │   ├── queueManager.js    # Queue system
-│   │   ├── statistics.js      # Statistics tracking
-│   │   ├── notificationManager.js # Notification system
-│   │   ├── backupManager.js   # Backup & recovery
-│   │   └── scheduler.js       # Scheduled stays
-│   └── utils/
-│       ├── config.js          # Config loader
-│       └── startupCheck.js    # Startup checks
+├── index.js                   # Main entry point
+├── bot/
+│   ├── BotInstance.js         # Bot instance class
+│   ├── commands.js             # Slash commands
+│   └── prefixCommands.js      # Prefix commands
+├── managers/
+│   ├── tierManager.js         # Tier/subscription manager
+│   ├── queueManager.js        # Queue system
+│   ├── statistics.js          # Statistics tracking
+│   ├── notificationManager.js # Notification system
+│   ├── backupManager.js       # Backup & recovery
+│   └── scheduler.js           # Scheduled stays
+├── utils/
+│   ├── config.js              # Config loader
+│   ├── embedHelper.js         # Embed helper functions
+│   └── startupCheck.js        # Startup checks
 ├── config.json.example
+├── config.json
 ├── package.json
 └── README.md
 ```
