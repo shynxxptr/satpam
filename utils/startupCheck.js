@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { loadConfig, getBotTokens } from './config.js';
+import { loadConfig, getBotTokens, getConfigPath } from './config.js';
 
 /**
  * Check dependencies
@@ -31,28 +31,65 @@ export function checkDependencies() {
 export function checkConfig() {
     console.log('\n🔍 Checking config file...');
     
-    const config = loadConfig();
-    if (!config) {
-        console.log('  ❌ config.json tidak ditemukan!');
-        console.log('  💡 Copy config.json.example ke config.json dan edit');
+    try {
+        const config = loadConfig(true); // Force reload to ensure latest config
+        if (!config) {
+            console.log('  ❌ config.json tidak ditemukan!');
+            console.log('  💡 Copy config.json.example ke config.json dan edit');
+            console.log('  💡 Pastikan file ada di root directory project');
+            return false;
+        }
+
+        // Validate config structure
+        if (!config.bot_tokens || !Array.isArray(config.bot_tokens)) {
+            console.log('  ❌ config.json tidak memiliki field "bot_tokens" yang valid!');
+            console.log('  💡 Format harus: {"bot_tokens": ["token1", "token2", ...]}');
+            return false;
+        }
+
+        const tokens = getBotTokens();
+        if (tokens.length === 0) {
+            console.log('  ❌ Tidak ada bot token yang valid!');
+            console.log('  💡 Pastikan token tidak kosong dan bukan placeholder');
+            console.log('  💡 Token harus minimal 50 karakter');
+            return false;
+        }
+
+        const configPath = getConfigPath();
+        console.log(`  ✅ config.json ditemukan: ${configPath || 'unknown'}`);
+        console.log(`  ✅ ${tokens.length} bot token(s) valid`);
+        
+        if (config.bot_tokens && config.bot_tokens.length > tokens.length) {
+            const placeholderCount = config.bot_tokens.length - tokens.length;
+            console.log(`  ⚠️  ${placeholderCount} token(s) masih placeholder/kosong (akan diabaikan)`);
+        }
+
+        // Check optional configs
+        if (config.idle_voice_channel_id) {
+            console.log(`  ✅ Idle channel ID: ${config.idle_voice_channel_id}`);
+        } else {
+            console.log(`  ℹ️  Idle channel ID tidak di-set (opsional)`);
+        }
+
+        if (config.music_enabled_bot) {
+            console.log(`  ✅ Music enabled bot: #${config.music_enabled_bot}`);
+        }
+
+        if (config.spotify) {
+            const spotify = config.spotify;
+            if (spotify.client_id && spotify.client_secret && 
+                !spotify.client_id.includes('your_') && !spotify.client_secret.includes('your_')) {
+                console.log(`  ✅ Spotify credentials ditemukan`);
+            } else {
+                console.log(`  ℹ️  Spotify credentials tidak di-set (opsional)`);
+            }
+        }
+
+        return true;
+    } catch (error) {
+        console.log(`  ❌ Error checking config: ${error.message}`);
         return false;
     }
-
-    const tokens = getBotTokens();
-    if (tokens.length === 0) {
-        console.log('  ❌ Tidak ada bot token yang valid!');
-        return false;
-    }
-
-    console.log(`  ✅ config.json ditemukan`);
-    console.log(`  ✅ ${tokens.length} bot token(s) valid`);
-    
-    if (config.bot_tokens && config.bot_tokens.length > tokens.length) {
-        const placeholderCount = config.bot_tokens.length - tokens.length;
-        console.log(`  ⚠️  ${placeholderCount} token(s) masih placeholder (akan diabaikan)`);
-    }
-
-    return true;
 }
 
 /**
