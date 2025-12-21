@@ -1,5 +1,4 @@
 import { DisTube } from 'distube';
-import { createAudioPlayer, createAudioResource, AudioPlayerStatus, joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus, entersState } from '@discordjs/voice';
 import { YouTube } from 'youtube-sr';
 import SpotifyWebApi from 'spotify-web-api-node';
 import { getSpotifyCredentials } from '../utils/config.js';
@@ -40,6 +39,22 @@ export function initDisTube(client) {
         
         distube.on('error', (channel, error) => {
             console.error('❌ DisTube error:', error);
+            
+            // Notify error callbacks
+            if (channel && channel.guild) {
+                const guildId = channel.guild.id;
+                const callbacks = errorCallbacks.get(guildId);
+                if (callbacks && callbacks.length > 0) {
+                    callbacks.forEach(callback => {
+                        try {
+                            callback(error.message || 'Error memutar musik', null);
+                        } catch (err) {
+                            console.error('Error in error callback:', err);
+                        }
+                    });
+                    errorCallbacks.delete(guildId);
+                }
+            }
         });
         
         distube.on('noRelated', (queue) => {
@@ -50,9 +65,6 @@ export function initDisTube(client) {
     }
     return distube;
 }
-
-// Global music state
-const musicStates = new Map(); // guildId -> { player, connection, queue, nowPlaying, paused, errorCallbacks }
 
 // Initialize Spotify API if credentials available
 let spotifyApi = null;
@@ -75,109 +87,8 @@ if (spotifyCreds && spotifyCreds.client_id && spotifyCreds.client_secret) {
         });
 }
 
-/**
- * Get or create music state for guild
- */
-function getMusicState(guildId) {
-    if (!musicStates.has(guildId)) {
-        const player = createAudioPlayer();
-        
-        // Setup error handler once
-        player.on('error', async (error) => {
-            console.error('Audio player error:', error.message);
-            const state = musicStates.get(guildId);
-            if (!state) return;
-            
-            const currentSong = state.nowPlaying;
-            const isParsingError = error.message && error.message.includes('parsing watch.html');
-            
-            // If YouTube parsing error and we have original query, try Spotify fallback
-            if (isParsingError && currentSong && (currentSong.originalQuery || currentSong.title) && spotifyApi && !currentSong.spotifyFallback && state.currentChannel) {
-                console.log('YouTube parsing error detected, trying Spotify fallback...');
-                
-                try {
-                    const query = currentSong.originalQuery || currentSong.title;
-                    const spotifyResult = await searchSpotifyTracks(query);
-                    
-                    if (spotifyResult) {
-                        console.log(`Spotify fallback success: ${spotifyResult.title}`);
-                        
-                        // Update song
-                        currentSong.url = spotifyResult.url;
-                        currentSong.spotifyTrack = spotifyResult.spotifyTrack;
-                        currentSong.spotifyFallback = true;
-                        currentSong.source = 'spotify';
-                        
-                        // Retry playback with Spotify result
-                        state.nowPlaying = currentSong;
-                        
-                        try {
-                            const resourceResult = await createAudioResourceFromYouTube(spotifyResult.url);
-                            if (resourceResult.resource) {
-                                const resource = resourceResult.resource;
-                                resource.volume?.setVolume(state.volume);
-                                state.player.play(resource);
-                                
-                                // Notify success
-                                if (state.errorCallbacks.length > 0) {
-                                    state.errorCallbacks.forEach(callback => {
-                                        try {
-                                            callback(null, currentSong, `✅ Auto-fallback ke Spotify: ${spotifyResult.title}`);
-                                        } catch (err) {
-                                            console.error('Error in success callback:', err);
-                                        }
-                                    });
-                                }
-                                return; // Success, don't continue with error handling
-                            }
-                        } catch (retryError) {
-                            console.error('Spotify fallback retry error:', retryError);
-                        }
-                    }
-                } catch (fallbackError) {
-                    console.error('Spotify fallback error:', fallbackError);
-                }
-            }
-            
-            // If fallback failed or not applicable, proceed with normal error handling
-            state.nowPlaying = null;
-            
-            // Notify error callbacks
-            if (state.errorCallbacks.length > 0) {
-                const errorMsg = isParsingError
-                    ? 'YouTube memblokir request. Spotify fallback juga gagal. Silakan coba lagi nanti.'
-                    : `Error memutar musik: ${error.message}`;
-                
-                state.errorCallbacks.forEach(callback => {
-                    try {
-                        callback(errorMsg, currentSong);
-                    } catch (err) {
-                        console.error('Error in error callback:', err);
-                    }
-                });
-                // Clear callbacks after notifying
-                state.errorCallbacks = [];
-            }
-            
-            // If it's a YouTube parsing error, log it
-            if (isParsingError) {
-                console.log('YouTube parsing error detected. Spotify fallback attempted but failed or not available.');
-            }
-        });
-        
-        musicStates.set(guildId, {
-            player: player,
-            connection: null,
-            queue: [],
-            nowPlaying: null,
-            paused: false,
-            volume: 1.0,
-            errorCallbacks: [],
-            currentChannel: null // Store channel for error retry // Callbacks untuk notify user tentang errors
-        });
-    }
-    return musicStates.get(guildId);
-}
+// Error callbacks storage (simple map for user notifications)
+const errorCallbacks = new Map(); // guildId -> array of callbacks
 
 /**
  * Search YouTube for query using DisTube
@@ -373,162 +284,7 @@ function extractSpotifyId(url) {
     return null;
 }
 
-/**
- * Create audio resource from YouTube URL using DisTube's ytdl-core
- * Returns { resource, error } - error will be set if YouTube fails and should fallback to Spotify
- */
-async function createAudioResourceFromYouTube(url, originalQuery = null) {
-    try {
-        // Use @distube/ytdl-core which has better bot detection handling than regular ytdl-core
-        
-        const stream = ytdl(url, {
-            filter: 'audioonly',
-            quality: 'lowestaudio',
-            highWaterMark: 1 << 25,
-            requestOptions: {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-us,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Connection': 'keep-alive',
-                    cookie: process.env.YOUTUBE_COOKIE || ''
-                }
-            }
-        });
-
-        // Handle stream errors - mark for fallback
-        stream.on('error', (error) => {
-            console.error('YouTube stream error:', error.message);
-            // Error will be caught by audio player error handler
-        });
-
-        const resource = createAudioResource(stream, {
-            inlineVolume: true,
-            metadata: { url, originalQuery }
-        });
-
-        // Handle resource errors
-        if (resource.playStream) {
-            resource.playStream.on('error', (error) => {
-                console.error('Audio resource stream error:', error.message);
-            });
-        }
-
-        return { resource, error: null };
-    } catch (error) {
-        console.error('Audio resource creation error:', error);
-        
-        // If it's a parsing error, mark for Spotify fallback
-        if (error.message && (error.message.includes('parsing watch.html') || error.message.includes('Sign in') || error.message.includes('bot'))) {
-            return { resource: null, error: 'youtube_parsing', originalQuery };
-        }
-        
-        return { resource: null, error: error.message, originalQuery };
-    }
-}
-
-/**
- * Play next song in queue
- */
-async function playNext(guildId, channel) {
-    const state = getMusicState(guildId);
-    
-    // Store channel reference for error retry
-    state.currentChannel = channel;
-    
-    if (state.queue.length === 0) {
-        state.nowPlaying = null;
-        return;
-    }
-
-    const song = state.queue.shift();
-    state.nowPlaying = song;
-    state.paused = false;
-
-    try {
-        // Setup connection first if needed
-        if (!state.connection || state.connection.state.status === VoiceConnectionStatus.Disconnected) {
-            state.connection = joinVoiceChannel({
-                channelId: channel.id,
-                guildId: channel.guild.id,
-                adapterCreator: channel.guild.voiceAdapterCreator,
-            });
-
-            // Wait for connection to be ready
-            try {
-                await entersState(state.connection, VoiceConnectionStatus.Ready, 10000);
-            } catch (error) {
-                console.error('Voice connection timeout:', error);
-                throw new Error('Tidak bisa connect ke voice channel. Pastikan bot memiliki permission untuk join voice channel.');
-            }
-
-            state.connection.subscribe(state.player);
-        }
-
-        // Create audio resource - with Spotify fallback on YouTube error
-        let resourceResult = await createAudioResourceFromYouTube(song.url, song.originalQuery || song.title);
-        
-        // If YouTube fails, try Spotify fallback
-        if (resourceResult.error && resourceResult.originalQuery && spotifyApi) {
-            console.log('YouTube error detected, trying Spotify fallback...');
-            const spotifyResult = await searchSpotifyTracks(resourceResult.originalQuery);
-            
-            if (spotifyResult) {
-                // Update song with Spotify result
-                song.url = spotifyResult.url;
-                song.spotifyTrack = spotifyResult.spotifyTrack;
-                song.spotifyFallback = true;
-                song.source = 'spotify';
-                
-                console.log(`Spotify fallback success: ${spotifyResult.title}`);
-                
-                // Try YouTube again with Spotify result URL
-                resourceResult = await createAudioResourceFromYouTube(spotifyResult.url);
-            }
-        }
-        
-        if (!resourceResult.resource) {
-            if (resourceResult.error === 'youtube_parsing') {
-                throw new Error('YouTube memblokir request. Spotify fallback juga tidak berhasil. Silakan coba lagi nanti.');
-            }
-            throw new Error(`Gagal membuat audio resource: ${resourceResult.error || 'Unknown error'}`);
-        }
-
-        const resource = resourceResult.resource;
-        resource.volume?.setVolume(state.volume);
-
-        // Play
-        state.player.play(resource);
-
-        // Handle end of song (remove all previous listeners first)
-        state.player.removeAllListeners(AudioPlayerStatus.Idle);
-        state.player.once(AudioPlayerStatus.Idle, () => {
-            setTimeout(() => {
-                if (state.queue.length > 0) {
-                    playNext(guildId, channel).catch(err => {
-                        console.error('Error playing next song:', err);
-                        state.nowPlaying = null;
-                    });
-                } else {
-                    state.nowPlaying = null;
-                }
-            }, 1000);
-        });
-
-        return song;
-    } catch (error) {
-        console.error('Play error:', error);
-        state.nowPlaying = null;
-        
-        // If it's a YouTube parsing error, provide helpful message
-        if (error.message && error.message.includes('parsing watch.html')) {
-            throw new Error('YouTube memblokir request. Silakan gunakan search dengan kata kunci (bukan URL langsung) atau coba lagi nanti.');
-        }
-        
-        throw error;
-    }
-}
+// Functions createAudioResourceFromYouTube and playNext removed - DisTube handles playback automatically
 
 /**
  * Music Player Manager
@@ -544,11 +300,13 @@ export const musicPlayer = {
         }
 
         const guildId = channel.guild.id;
-        const state = getMusicState(guildId);
 
         // Register error callback if provided
         if (onErrorCallback) {
-            state.errorCallbacks.push(onErrorCallback);
+            if (!errorCallbacks.has(guildId)) {
+                errorCallbacks.set(guildId, []);
+            }
+            errorCallbacks.get(guildId).push(onErrorCallback);
         }
 
         try {
@@ -731,15 +489,14 @@ export const musicPlayer = {
      * Disconnect
      */
     disconnect(guildId) {
-        const state = getMusicState(guildId);
-        if (state.connection) {
-            state.connection.destroy();
-            state.connection = null;
+        if (!distube) return false;
+        const queue = distube.getQueue(guildId);
+        if (queue) {
+            queue.stop();
+            queue.voice.connection.destroy();
+            return true;
         }
-        if (state.player) {
-            state.player.stop();
-        }
-        musicStates.delete(guildId);
+        return false;
     },
 
     /**
