@@ -204,49 +204,47 @@ async function searchYouTube(query) {
  * Get YouTube video info using DisTube
  */
 async function getYouTubeInfo(url) {
-    if (!distube) {
-        throw new Error('DisTube belum di-initialize');
+    // Try DisTube first if available (better bot detection)
+    if (distube) {
+        try {
+            const results = await distube.search(url, { limit: 1, safeSearch: false });
+            if (results && results.length > 0) {
+                const song = results[0];
+                return {
+                    url: song.url,
+                    title: song.name || song.title,
+                    duration: song.formattedDuration || song.durationFormatted,
+                    thumbnail: song.thumbnail || song.thumbnailURL,
+                    source: 'youtube'
+                };
+            }
+        } catch (error) {
+            console.error('DisTube search error:', error);
+            // Fallback to youtube-sr
+        }
     }
-
+    
+    // Fallback to youtube-sr
     try {
-        // Use DisTube to resolve URL
-        const results = await distube.search(url, { limit: 1, safeSearch: false });
-        if (!results || results.length === 0) {
+        const results = await YouTube.search(url, { limit: 1, type: 'video' });
+        if (results.length === 0) {
             throw new Error('Tidak bisa menemukan video YouTube');
         }
         
-        const song = results[0];
+        const video = results[0];
         return {
-            url: song.url,
-            title: song.name || song.title,
-            duration: song.formattedDuration || song.durationFormatted,
-            thumbnail: song.thumbnail || song.thumbnailURL,
+            url: video.url,
+            title: video.title,
+            duration: video.durationFormatted,
+            thumbnail: video.thumbnail?.url,
             source: 'youtube'
         };
     } catch (error) {
         console.error('YouTube info error:', error);
-        
-        // Fallback to youtube-sr if DisTube fails
-        try {
-            const results = await YouTube.search(url, { limit: 1, type: 'video' });
-            if (results.length === 0) {
-                throw new Error('Tidak bisa menemukan video YouTube');
-            }
-            
-            const video = results[0];
-            return {
-                url: video.url,
-                title: video.title,
-                duration: video.durationFormatted,
-                thumbnail: video.thumbnail?.url,
-                source: 'youtube'
-            };
-        } catch (fallbackError) {
-            if (error.message && (error.message.includes('Sign in') || error.message.includes('bot'))) {
-                throw new Error('YouTube memblokir request. Silakan coba lagi nanti atau gunakan search dengan kata kunci saja (bukan URL langsung).');
-            }
-            throw error;
+        if (error.message && (error.message.includes('Sign in') || error.message.includes('bot'))) {
+            throw new Error('YouTube memblokir request. Silakan coba lagi nanti atau gunakan search dengan kata kunci saja (bukan URL langsung).');
         }
+        throw error;
     }
 }
 
