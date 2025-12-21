@@ -50,6 +50,15 @@ export class BotInstance {
         this.client.once('ready', () => {
             console.log(`🛡️  Satpam Bot #${this.botNumber} (${this.client.user.tag}) telah online!`);
             
+            // Initialize DisTube for music-enabled bot (for better YouTube search/resolve)
+            if (this.musicEnabled) {
+                try {
+                    initDisTube(this.client);
+                } catch (error) {
+                    console.error(`❌ Bot #${this.botNumber}: Failed to initialize DisTube:`, error.message);
+                }
+            }
+            
             // Setup commands
             setupSlashCommands(this);
             setupPrefixCommands(this);
