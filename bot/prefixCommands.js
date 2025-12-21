@@ -2,6 +2,7 @@ import { EmbedBuilder } from 'discord.js';
 import { getUserTier, getStayDurationHours, getTierInfo, getUserTierInfo, TIER_CATEGORIES } from '../managers/tierManager.js';
 import { sharedAssignments, channelTimers } from './commands.js';
 import { notificationManager } from '../managers/notificationManager.js';
+import { getMusicEnabledBot } from '../utils/config.js';
 import {
     createSuccessEmbed,
     createErrorEmbed,
@@ -229,6 +230,124 @@ export function setupPrefixCommands(botInstance) {
                 }
             });
 
+            await message.reply({ embeds: [embed] });
+            return;
+        }
+
+        // Command: play (Music)
+        if (commandName === 'play' || commandName === 'p') {
+            // Cek apakah bot ini enabled untuk music
+            if (!botInstance.musicEnabled) {
+                const musicBot = getMusicEnabledBot();
+                const embed = createErrorEmbed(
+                    'Music Tidak Tersedia',
+                    `Hanya **Satpam Bot #${musicBot || 1}** yang bisa play music!\n` +
+                    `Bot ini (Bot #${botInstance.botNumber}) hanya untuk jaga voice channel.`
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            // Cek apakah user ada di voice channel
+            const channel = message.member.voice?.channel;
+            if (!channel) {
+                const embed = createErrorEmbed(
+                    'Tidak Ada di Voice Channel',
+                    'Kamu harus berada di voice channel untuk play music!'
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            // Get query/URL
+            const query = args.join(' ');
+            if (!query) {
+                const embed = createErrorEmbed(
+                    'Query Kosong',
+                    'Silakan berikan URL atau nama lagu yang ingin diputar!\n' +
+                    'Contoh: `satpam!play never gonna give you up`'
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            // TODO: Implement music player
+            const embed = createInfoEmbed(
+                'Music Feature Sedang Dikembangkan',
+                'Fitur music player sedang dalam pengembangan.\n' +
+                'Command yang kamu kirim:\n' +
+                `\`\`\`${query}\`\`\`\n\n` +
+                'Fitur yang akan datang:\n' +
+                '• Play music dari YouTube\n' +
+                '• Play music dari Spotify\n' +
+                '• Search dan play lagu\n' +
+                '• Control playback (pause, resume, stop)',
+                [
+                    { name: '🎵 Query', value: query, inline: false },
+                    { name: '📍 Channel', value: `${channel}`, inline: true },
+                    { name: '🛡️ Bot', value: `Satpam Bot #${botInstance.botNumber}`, inline: true }
+                ]
+            );
+            await message.reply({ embeds: [embed] });
+            return;
+        }
+
+        // Command: stop (Music)
+        if (commandName === 'stop' || commandName === 's') {
+            if (!botInstance.musicEnabled) {
+                const embed = createErrorEmbed(
+                    'Music Tidak Tersedia',
+                    `Hanya **Satpam Bot #${getMusicEnabledBot() || 1}** yang bisa mengontrol music!`
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            const embed = createInfoEmbed(
+                'Music Feature Sedang Dikembangkan',
+                'Fitur music player sedang dalam pengembangan.\n' +
+                'Command stop akan tersedia setelah music player selesai diimplementasikan.'
+            );
+            await message.reply({ embeds: [embed] });
+            return;
+        }
+
+        // Command: pause (Music)
+        if (commandName === 'pause') {
+            if (!botInstance.musicEnabled) {
+                const embed = createErrorEmbed(
+                    'Music Tidak Tersedia',
+                    `Hanya **Satpam Bot #${getMusicEnabledBot() || 1}** yang bisa mengontrol music!`
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            const embed = createInfoEmbed(
+                'Music Feature Sedang Dikembangkan',
+                'Fitur music player sedang dalam pengembangan.\n' +
+                'Command pause akan tersedia setelah music player selesai diimplementasikan.'
+            );
+            await message.reply({ embeds: [embed] });
+            return;
+        }
+
+        // Command: resume (Music)
+        if (commandName === 'resume') {
+            if (!botInstance.musicEnabled) {
+                const embed = createErrorEmbed(
+                    'Music Tidak Tersedia',
+                    `Hanya **Satpam Bot #${getMusicEnabledBot() || 1}** yang bisa mengontrol music!`
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            const embed = createInfoEmbed(
+                'Music Feature Sedang Dikembangkan',
+                'Fitur music player sedang dalam pengembangan.\n' +
+                'Command resume akan tersedia setelah music player selesai diimplementasikan.'
+            );
             await message.reply({ embeds: [embed] });
             return;
         }
