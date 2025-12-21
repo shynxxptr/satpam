@@ -571,8 +571,12 @@ export const musicPlayer = {
             // Handle DisTube errors
             console.error('[MusicPlayer] Play error caught:', error.message);
             
-            // Clean up stored query on error
-            originalQueries.delete(guildId);
+            // Don't delete stored query immediately - error handler might need it for Spotify fallback
+            // Only delete if it's marked as fallback (already tried Spotify)
+            const storedQuery = originalQueries.get(guildId);
+            if (storedQuery && storedQuery.isFallback) {
+                originalQueries.delete(guildId);
+            }
             
             if (onErrorCallback) {
                 onErrorCallback(error.message, null);
