@@ -151,6 +151,11 @@ function createAudioResourceFromYouTube(url) {
             highWaterMark: 1 << 25,
             requestOptions: {
                 headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Connection': 'keep-alive',
                     cookie: process.env.YOUTUBE_COOKIE || ''
                 }
             }
@@ -238,15 +243,34 @@ export const musicPlayer = {
             if (query.includes('spotify.com') || query.includes('spotify:')) {
                 song = await getSpotifyTrack(query);
             }
-            // Check if YouTube URL
+            // Check if YouTube URL - Try to validate, but if error, fallback to search
             else if (ytdl.validateURL(query)) {
-                song = await getYouTubeInfo(query);
+                try {
+                    song = await getYouTubeInfo(query);
+                } catch (error) {
+                    // If URL validation fails due to bot detection, try search instead
+                    if (error.message && error.message.includes('Sign in')) {
+                        console.log('YouTube URL blocked, trying search instead...');
+                        // Extract video ID and search by it
+                        const videoId = query.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/)?.[1];
+                        if (videoId) {
+                            song = await searchYouTube(videoId);
+                            if (!song) {
+                                throw new Error('Tidak bisa mengakses URL YouTube. Coba gunakan search dengan kata kunci saja.');
+                            }
+                        } else {
+                            throw error;
+                        }
+                    } else {
+                        throw error;
+                    }
+                }
             }
             // Search YouTube
             else {
                 song = await searchYouTube(query);
                 if (!song) {
-                    throw new Error('Tidak bisa menemukan lagu. Coba gunakan URL YouTube langsung atau kata kunci yang lebih spesifik.');
+                    throw new Error('Tidak bisa menemukan lagu. Coba gunakan kata kunci yang lebih spesifik.');
                 }
             }
 
