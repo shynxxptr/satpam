@@ -2,7 +2,9 @@ import { DisTube } from 'distube';
 import { YtDlpPlugin } from '@distube/yt-dlp';
 import { YouTube } from 'youtube-sr';
 import SpotifyWebApi from 'spotify-web-api-node';
-import { getSpotifyCredentials } from '../utils/config.js';
+import { getSpotifyCredentials, getYouTubeCookiesPath, hasYouTubeCookies } from '../utils/config.js';
+import path from 'path';
+import fs from 'fs';
 
 // DisTube instance (will be initialized when we have client)
 let distube = null;
@@ -13,16 +15,32 @@ let distube = null;
  */
 export function initDisTube(client) {
     if (!distube) {
+        // Get YouTube cookies path if available
+        const cookiesPath = getYouTubeCookiesPath();
+        const hasCookies = hasYouTubeCookies();
+        
+        // Build extractor args for yt-dlp
+        const extractorArgs = [
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            '--referer', 'https://www.youtube.com/',
+            '--add-header', 'Accept-Language:en-US,en;q=0.9',
+            '--extractor-args', 'youtube:player_client=web'
+        ];
+        
+        // Add cookies file if available (helps avoid bot detection)
+        if (hasCookies && cookiesPath) {
+            extractorArgs.push('--cookies', cookiesPath);
+            console.log(`✅ YouTube cookies file ditemukan: ${cookiesPath}`);
+            console.log('   Menggunakan cookies untuk menghindari bot detection...');
+        } else {
+            console.log('⚠️  YouTube cookies file tidak ditemukan.');
+            console.log('   Tambahkan "youtube_cookies_path" di config.json dan file cookies.txt untuk hasil lebih baik.');
+        }
+        
         // Configure yt-dlp plugin for better YouTube bot detection avoidance
         const ytDlpPlugin = new YtDlpPlugin({
             update: true, // Auto-update yt-dlp
-            // Custom extractor args to avoid bot detection
-            extractorArgs: [
-                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                '--referer', 'https://www.youtube.com/',
-                '--add-header', 'Accept-Language:en-US,en;q=0.9',
-                '--extractor-args', 'youtube:player_client=web'
-            ]
+            extractorArgs: extractorArgs
         });
         
         distube = new DisTube(client, {

@@ -10,6 +10,10 @@ yarn.lock
 # Config files (sensitive)
 config.json
 
+# YouTube cookies (sensitive - contains session data)
+cookies.txt
+*.cookies
+
 # Logs
 logs/
 *.log

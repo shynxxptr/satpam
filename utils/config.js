@@ -165,6 +165,42 @@ export function getSpotifyCredentials() {
 }
 
 /**
+ * Get YouTube cookies file path
+ */
+export function getYouTubeCookiesPath() {
+    const config = loadConfig();
+    if (!config || !config.youtube_cookies_path) {
+        return null;
+    }
+    
+    const cookiesPath = config.youtube_cookies_path.trim();
+    if (cookiesPath === '' || cookiesPath === 'cookies.txt') {
+        // Default to cookies.txt in project root
+        return path.join(process.cwd(), 'cookies.txt');
+    }
+    
+    // If it's an absolute path, use it directly
+    if (path.isAbsolute(cookiesPath)) {
+        return cookiesPath;
+    }
+    
+    // Otherwise, resolve relative to project root
+    return path.join(process.cwd(), cookiesPath);
+}
+
+/**
+ * Check if YouTube cookies file exists
+ */
+export function hasYouTubeCookies() {
+    const cookiesPath = getYouTubeCookiesPath();
+    if (!cookiesPath) {
+        return false;
+    }
+    
+    return fs.existsSync(cookiesPath);
+}
+
+/**
  * Validate config file
  */
 export function validateConfig() {
