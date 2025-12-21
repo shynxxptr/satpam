@@ -458,6 +458,24 @@ export const musicPlayer = {
                     throw new Error('Spotify API tidak dikonfigurasi');
                 }
             }
+            
+            // PRIORITY: Try Spotify search first for all queries to avoid YouTube bot detection
+            // Only if Spotify API is available and query is not a YouTube URL
+            let useSpotifyFirst = false;
+            if (spotifyApi && !isYouTubeURL(originalQuery) && !originalQuery.includes('spotify')) {
+                console.log(`[MusicPlayer] Trying Spotify search first for: "${originalQuery}"`);
+                const spotifyResult = await searchSpotifyTracks(originalQuery);
+                if (spotifyResult) {
+                    console.log(`[MusicPlayer] Spotify found: ${spotifyResult.title}`);
+                    // Use Spotify result to create better YouTube search query
+                    const artist = spotifyResult.spotifyTrack?.artists[0] || '';
+                    const title = spotifyResult.spotifyTrack?.name || spotifyResult.title;
+                    const cleanTitle = title.replace(new RegExp(`^${artist}\\s*-?\\s*`, 'i'), '').trim();
+                    query = cleanTitle ? `${artist} - ${cleanTitle}` : title;
+                    useSpotifyFirst = true;
+                    console.log(`[MusicPlayer] Using Spotify result for YouTube search: "${query}"`);
+                }
+            }
 
             // Use DisTube to play - it handles search, resolve, and playback automatically
             // DisTube supports YouTube, Spotify (via plugin), SoundCloud, and 700+ other sites
