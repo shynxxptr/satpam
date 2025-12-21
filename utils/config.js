@@ -21,6 +21,8 @@ export function loadConfig(forceReload = false) {
     const configPaths = [
         path.join(process.cwd(), 'config.json'),
         path.join(__dirname, '../config.json'),
+        path.join(process.cwd(), 'config', 'config.json'),
+        path.join(__dirname, '../config', 'config.json'),
     ];
 
     for (const configPath of configPaths) {

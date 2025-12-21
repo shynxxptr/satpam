@@ -36,7 +36,13 @@ export function checkConfig() {
         if (!config) {
             console.log('  ❌ config.json tidak ditemukan!');
             console.log('  💡 Copy config.json.example ke config.json dan edit');
-            console.log('  💡 Pastikan file ada di root directory project');
+            console.log('  💡 Lokasi yang dicari:');
+            console.log('     - ./config.json (root directory)');
+            console.log('     - ./config/config.json');
+            console.log('  💡 Contoh command:');
+            console.log('     cp config/config.json.example config.json');
+            console.log('     # atau jika di root:');
+            console.log('     cp config.json.example config.json');
             return false;
         }
 
