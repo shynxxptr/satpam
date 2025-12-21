@@ -50,6 +50,38 @@ export function setupSlashCommands(botInstance) {
                 }
             }
 
+            // Validasi bahwa channel adalah voice channel
+            if (!channel) {
+                const embed = createErrorEmbed(
+                    'Channel Tidak Valid',
+                    'Channel yang dipilih tidak valid atau tidak ditemukan!'
+                );
+                await interaction.editReply({ embeds: [embed] });
+                return;
+            }
+
+            // Fetch channel untuk memastikan kita punya objek VoiceChannel yang valid
+            try {
+                channel = await interaction.guild.channels.fetch(channel.id);
+            } catch (error) {
+                const embed = createErrorEmbed(
+                    'Error Fetching Channel',
+                    `Tidak bisa mengambil informasi channel: ${error.message}`
+                );
+                await interaction.editReply({ embeds: [embed] });
+                return;
+            }
+
+            // Validasi tipe channel (harus voice channel)
+            if (!channel || channel.type !== 2) { // 2 = VoiceChannel in Discord.js v14
+                const embed = createErrorEmbed(
+                    'Channel Bukan Voice Channel',
+                    'Channel yang dipilih harus berupa voice channel!'
+                );
+                await interaction.editReply({ embeds: [embed] });
+                return;
+            }
+
             // Cek apakah channel sudah dijaga bot lain
             if (sharedAssignments.has(channel.id)) {
                 const assignedBot = sharedAssignments.get(channel.id);
@@ -153,6 +185,38 @@ export function setupSlashCommands(botInstance) {
                     await interaction.editReply({ embeds: [embed] });
                     return;
                 }
+            }
+
+            // Validasi dan fetch channel
+            if (!channel) {
+                const embed = createErrorEmbed(
+                    'Channel Tidak Valid',
+                    'Channel yang dipilih tidak valid atau tidak ditemukan!'
+                );
+                await interaction.editReply({ embeds: [embed] });
+                return;
+            }
+
+            // Fetch channel untuk memastikan kita punya objek VoiceChannel yang valid
+            try {
+                channel = await interaction.guild.channels.fetch(channel.id);
+            } catch (error) {
+                const embed = createErrorEmbed(
+                    'Error Fetching Channel',
+                    `Tidak bisa mengambil informasi channel: ${error.message}`
+                );
+                await interaction.editReply({ embeds: [embed] });
+                return;
+            }
+
+            // Validasi tipe channel (harus voice channel)
+            if (!channel || channel.type !== 2) { // 2 = VoiceChannel
+                const embed = createErrorEmbed(
+                    'Channel Bukan Voice Channel',
+                    'Channel yang dipilih harus berupa voice channel!'
+                );
+                await interaction.editReply({ embeds: [embed] });
+                return;
             }
 
             // Cek apakah channel dijaga oleh bot ini

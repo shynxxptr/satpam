@@ -138,6 +138,21 @@ export class BotInstance {
 
     async joinChannel(channel, member) {
         try {
+            // Validasi channel
+            if (!channel) {
+                throw new Error('Channel tidak valid atau null');
+            }
+
+            // Validasi bahwa channel memiliki method join (harus VoiceChannel)
+            if (typeof channel.join !== 'function') {
+                throw new Error(`Channel tidak memiliki method join. Pastikan channel adalah VoiceChannel (tipe: ${channel.type || 'unknown'})`);
+            }
+
+            // Validasi channel type (2 = VoiceChannel)
+            if (channel.type !== 2) {
+                throw new Error(`Channel harus berupa voice channel. Tipe channel saat ini: ${channel.type}`);
+            }
+
             // Disconnect from current channel if any
             if (this.voiceConnection) {
                 this.voiceConnection.destroy();
