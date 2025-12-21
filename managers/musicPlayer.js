@@ -42,23 +42,32 @@ export function initDisTube(client) {
                 message: error.message,
                 name: error.name,
                 channel: channel?.id,
-                channelType: channel?.type
+                channelType: channel?.type,
+                channelGuild: channel?.guild?.id
             });
+            console.log(`[Error Handler] Total stored queries: ${originalQueries.size}`);
+            if (originalQueries.size > 0) {
+                console.log(`[Error Handler] Stored guildIds: ${Array.from(originalQueries.keys()).join(', ')}`);
+            }
             
             // Get guildId from channel or try to find from stored queries
             let guildId = null;
             if (channel && channel.guild) {
                 guildId = channel.guild.id;
+                console.log(`[Error Handler] Got guildId from channel: ${guildId}`);
             } else {
                 // Try to find guildId from stored queries (find first match)
                 for (const [gId, stored] of originalQueries.entries()) {
                     guildId = gId;
+                    console.log(`[Error Handler] Got guildId from stored queries: ${guildId}`);
                     break;
                 }
             }
             
             if (!guildId) {
-                console.error('Cannot determine guildId from error, skipping Spotify fallback');
+                console.error('[Error Handler] Cannot determine guildId from error, skipping Spotify fallback');
+                console.error('[Error Handler] Channel:', channel);
+                console.error('[Error Handler] Stored queries:', Array.from(originalQueries.keys()));
                 return;
             }
             
@@ -71,7 +80,7 @@ export function initDisTube(client) {
                 error.name === 'PlayingError'
             );
             
-            console.log(`Error detected - isBotDetection: ${isBotDetection}, guildId: ${guildId}`);
+            console.log(`[Error Handler] Error detected - isBotDetection: ${isBotDetection}, guildId: ${guildId}, spotifyApi: ${spotifyApi ? 'available' : 'not available'}`);
             
             // Try Spotify fallback if YouTube bot detection error
             if (isBotDetection && spotifyApi) {
@@ -398,6 +407,10 @@ export const musicPlayer = {
         }
 
         const guildId = voiceChannel.guild.id;
+        
+        // Store ORIGINAL query BEFORE any modification for Spotify fallback
+        const originalQuery = query;
+        console.log(`[MusicPlayer] Storing original query for guild ${guildId}: "${originalQuery}"`);
 
         // Register error callback if provided
         if (onErrorCallback) {
@@ -409,10 +422,11 @@ export const musicPlayer = {
         
         // Store original query for Spotify fallback on YouTube bot detection
         originalQueries.set(guildId, {
-            query: query,
+            query: originalQuery, // Store original, not modified query
             voiceChannel: voiceChannel,
             member: member
         });
+        console.log(`[MusicPlayer] Stored query in map. Total stored: ${originalQueries.size}`);
 
         try {
             // Handle Spotify URL - convert to YouTube search first
