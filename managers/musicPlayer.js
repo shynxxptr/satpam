@@ -138,6 +138,48 @@ async function getYouTubeInfo(url) {
 }
 
 /**
+ * Search Spotify tracks by query
+ */
+async function searchSpotifyTracks(query) {
+    if (!spotifyApi) {
+        return null;
+    }
+
+    try {
+        const data = await spotifyApi.searchTracks(query, { limit: 1 });
+        const tracks = data.body.tracks?.items;
+        
+        if (!tracks || tracks.length === 0) {
+            return null;
+        }
+
+        const track = tracks[0];
+        
+        // Search YouTube dengan format: "Artist - Title"
+        const youtubeQuery = `${track.artists[0].name} - ${track.name}`;
+        const youtubeResult = await searchYouTube(youtubeQuery);
+        
+        if (!youtubeResult) {
+            return null;
+        }
+
+        return {
+            ...youtubeResult,
+            spotifyTrack: {
+                name: track.name,
+                artists: track.artists.map(a => a.name),
+                album: track.album.name
+            },
+            source: 'spotify',
+            spotifyFallback: true
+        };
+    } catch (error) {
+        console.error('Spotify search error:', error);
+        return null;
+    }
+}
+
+/**
  * Get Spotify track info and convert to YouTube
  */
 async function getSpotifyTrack(spotifyUrl) {
@@ -193,8 +235,9 @@ function extractSpotifyId(url) {
 
 /**
  * Create audio resource from YouTube URL
+ * Returns { resource, error } - error will be set if YouTube fails and should fallback to Spotify
  */
-function createAudioResourceFromYouTube(url) {
+async function createAudioResourceFromYouTube(url, originalQuery = null) {
     try {
         const stream = ytdl(url, {
             filter: 'audioonly',
@@ -212,7 +255,7 @@ function createAudioResourceFromYouTube(url) {
             }
         });
 
-        // Handle stream errors - don't throw, just log
+        // Handle stream errors - mark for fallback
         stream.on('error', (error) => {
             console.error('YouTube stream error:', error.message);
             // Error will be caught by audio player error handler
@@ -220,7 +263,7 @@ function createAudioResourceFromYouTube(url) {
 
         const resource = createAudioResource(stream, {
             inlineVolume: true,
-            metadata: { url }
+            metadata: { url, originalQuery }
         });
 
         // Handle resource errors
@@ -228,16 +271,16 @@ function createAudioResourceFromYouTube(url) {
             console.error('Audio resource stream error:', error.message);
         });
 
-        return resource;
+        return { resource, error: null };
     } catch (error) {
         console.error('Audio resource creation error:', error);
         
-        // If it's a parsing error, provide helpful message
+        // If it's a parsing error, mark for Spotify fallback
         if (error.message && error.message.includes('parsing watch.html')) {
-            throw new Error('YouTube memblokir request atau format berubah. Silakan gunakan search dengan kata kunci (bukan URL langsung).');
+            return { resource: null, error: 'youtube_parsing', originalQuery };
         }
         
-        throw error;
+        return { resource: null, error: error.message, originalQuery };
     }
 }
 
@@ -334,6 +377,7 @@ export const musicPlayer = {
             // Check if Spotify URL
             if (query.includes('spotify.com') || query.includes('spotify:')) {
                 song = await getSpotifyTrack(query);
+                song.originalQuery = query; // Store original query for fallback
             }
             // Check if YouTube URL - Always use search to avoid bot detection
             else if (ytdl.validateURL(query)) {
@@ -344,32 +388,52 @@ export const musicPlayer = {
                     console.log(`YouTube URL detected, using search for video ID: ${videoId}`);
                     song = await searchYouTube(videoId);
                     if (!song) {
-                        // If search fails, try direct URL as last resort
-                        try {
-                            song = await getYouTubeInfo(query);
-                        } catch (error) {
-                            throw new Error('Tidak bisa mengakses URL YouTube. Coba gunakan search dengan kata kunci saja.');
+                        // If search fails, try Spotify fallback
+                        if (spotifyApi) {
+                            console.log('YouTube search failed, trying Spotify fallback...');
+                            song = await searchSpotifyTracks(query);
+                        }
+                        if (!song) {
+                            // If Spotify also fails, try direct URL as last resort
+                            try {
+                                song = await getYouTubeInfo(query);
+                            } catch (error) {
+                                throw new Error('Tidak bisa mengakses URL YouTube dan Spotify fallback juga gagal. Coba gunakan search dengan kata kunci saja.');
+                            }
                         }
                     }
                 } else {
-                    // Invalid URL format, try direct access
+                    // Invalid URL format, try direct access first
                     try {
                         song = await getYouTubeInfo(query);
                     } catch (error) {
-                        // Fallback to search
-                        song = await searchYouTube(query);
+                        // If error, try Spotify fallback
+                        if (spotifyApi) {
+                            console.log('YouTube direct access failed, trying Spotify fallback...');
+                            song = await searchSpotifyTracks(query);
+                        }
                         if (!song) {
-                            throw new Error('Tidak bisa mengakses URL YouTube. Coba gunakan search dengan kata kunci saja.');
+                            // Fallback to search
+                            song = await searchYouTube(query);
+                            if (!song) {
+                                throw new Error('Tidak bisa mengakses URL YouTube dan Spotify fallback juga gagal. Coba gunakan search dengan kata kunci saja.');
+                            }
                         }
                     }
                 }
+                song.originalQuery = query; // Store original query for fallback
             }
-            // Search YouTube
+            // Search YouTube first, fallback to Spotify if fails
             else {
                 song = await searchYouTube(query);
-                if (!song) {
-                    throw new Error('Tidak bisa menemukan lagu. Coba gunakan kata kunci yang lebih spesifik.');
+                if (!song && spotifyApi) {
+                    console.log('YouTube search failed, trying Spotify fallback...');
+                    song = await searchSpotifyTracks(query);
                 }
+                if (!song) {
+                    throw new Error('Tidak bisa menemukan lagu di YouTube maupun Spotify. Coba gunakan kata kunci yang lebih spesifik.');
+                }
+                song.originalQuery = query; // Store original query for fallback
             }
 
             // Add to queue
