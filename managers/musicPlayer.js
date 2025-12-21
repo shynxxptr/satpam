@@ -38,74 +38,110 @@ export function initDisTube(client) {
         
         distube.on('error', async (channel, error) => {
             console.error('❌ DisTube error:', error);
+            console.error('Error details:', {
+                message: error.message,
+                name: error.name,
+                channel: channel?.id,
+                channelType: channel?.type
+            });
             
+            // Get guildId from channel or try to find from stored queries
+            let guildId = null;
             if (channel && channel.guild) {
-                const guildId = channel.guild.id;
+                guildId = channel.guild.id;
+            } else {
+                // Try to find guildId from stored queries (find first match)
+                for (const [gId, stored] of originalQueries.entries()) {
+                    guildId = gId;
+                    break;
+                }
+            }
+            
+            if (!guildId) {
+                console.error('Cannot determine guildId from error, skipping Spotify fallback');
+                return;
+            }
+            
+            // Check if it's YouTube bot detection error
+            const isBotDetection = error.message && (
+                error.message.includes('Sign in to confirm') ||
+                error.message.includes('not a bot') ||
+                error.message.includes('bot detection') ||
+                error.name === 'UnrecoverableError' ||
+                error.name === 'PlayingError'
+            );
+            
+            console.log(`Error detected - isBotDetection: ${isBotDetection}, guildId: ${guildId}`);
+            
+            // Try Spotify fallback if YouTube bot detection error
+            if (isBotDetection && spotifyApi) {
+                const storedQuery = originalQueries.get(guildId);
+                console.log(`Stored query found: ${storedQuery ? 'YES' : 'NO'}`);
                 
-                // Check if it's YouTube bot detection error
-                const isBotDetection = error.message && (
-                    error.message.includes('Sign in to confirm') ||
-                    error.message.includes('not a bot') ||
-                    error.message.includes('bot detection') ||
-                    error.name === 'UnrecoverableError'
-                );
-                
-                // Try Spotify fallback if YouTube bot detection error
-                if (isBotDetection && spotifyApi) {
-                    const storedQuery = originalQueries.get(guildId);
-                    if (storedQuery && !storedQuery.query.includes('spotify')) {
-                        console.log('YouTube bot detection detected, trying Spotify fallback...');
-                        try {
-                            const spotifyResult = await searchSpotifyTracks(storedQuery.query);
-                            if (spotifyResult) {
-                                console.log(`Spotify fallback success: ${spotifyResult.title}`);
-                                
-                                // Try play with Spotify result
-                                const searchQuery = `${spotifyResult.spotifyTrack?.artists.join(' ') || ''} ${spotifyResult.title}`;
-                                await distube.play(storedQuery.voiceChannel, searchQuery, {
-                                    member: storedQuery.member,
-                                    textChannel: null,
-                                    skip: false
+                if (storedQuery && !storedQuery.query.includes('spotify')) {
+                    console.log('YouTube bot detection detected, trying Spotify fallback...');
+                    console.log(`Original query: "${storedQuery.query}"`);
+                    
+                    try {
+                        const spotifyResult = await searchSpotifyTracks(storedQuery.query);
+                        if (spotifyResult) {
+                            console.log(`Spotify fallback success: ${spotifyResult.title}`);
+                            
+                            // Try play with Spotify result
+                            const searchQuery = `${spotifyResult.spotifyTrack?.artists.join(' ') || ''} ${spotifyResult.title}`;
+                            console.log(`Trying to play with search query: "${searchQuery}"`);
+                            
+                            await distube.play(storedQuery.voiceChannel, searchQuery, {
+                                member: storedQuery.member,
+                                textChannel: null,
+                                skip: false
+                            });
+                            
+                            // Notify success
+                            const callbacks = errorCallbacks.get(guildId);
+                            if (callbacks && callbacks.length > 0) {
+                                callbacks.forEach(callback => {
+                                    try {
+                                        callback(null, null, `✅ Auto-fallback ke Spotify: ${spotifyResult.title}`);
+                                    } catch (err) {
+                                        console.error('Error in success callback:', err);
+                                    }
                                 });
-                                
-                                // Notify success
-                                const callbacks = errorCallbacks.get(guildId);
-                                if (callbacks && callbacks.length > 0) {
-                                    callbacks.forEach(callback => {
-                                        try {
-                                            callback(null, null, `✅ Auto-fallback ke Spotify: ${spotifyResult.title}`);
-                                        } catch (err) {
-                                            console.error('Error in success callback:', err);
-                                        }
-                                    });
-                                }
-                                
-                                originalQueries.delete(guildId);
-                                errorCallbacks.delete(guildId);
-                                return; // Success, don't notify error
                             }
-                        } catch (fallbackError) {
-                            console.error('Spotify fallback error:', fallbackError);
+                            
+                            originalQueries.delete(guildId);
+                            errorCallbacks.delete(guildId);
+                            return; // Success, don't notify error
+                        } else {
+                            console.log('Spotify search returned no results');
                         }
+                    } catch (fallbackError) {
+                        console.error('Spotify fallback error:', fallbackError);
+                    }
+                } else {
+                    if (!storedQuery) {
+                        console.log('No stored query found for fallback');
+                    } else {
+                        console.log('Query is already a Spotify query, skipping fallback');
                     }
                 }
-                
-                // Notify error callbacks
-                const callbacks = errorCallbacks.get(guildId);
-                if (callbacks && callbacks.length > 0) {
-                    callbacks.forEach(callback => {
-                        try {
-                            callback(error.message || 'Error memutar musik', null);
-                        } catch (err) {
-                            console.error('Error in error callback:', err);
-                        }
-                    });
-                    errorCallbacks.delete(guildId);
-                }
-                
-                // Clean up stored query
-                originalQueries.delete(guildId);
             }
+            
+            // Notify error callbacks
+            const callbacks = errorCallbacks.get(guildId);
+            if (callbacks && callbacks.length > 0) {
+                callbacks.forEach(callback => {
+                    try {
+                        callback(error.message || 'Error memutar musik', null);
+                    } catch (err) {
+                        console.error('Error in error callback:', err);
+                    }
+                });
+                errorCallbacks.delete(guildId);
+            }
+            
+            // Clean up stored query
+            originalQueries.delete(guildId);
         });
         
         distube.on('noRelated', (queue) => {
