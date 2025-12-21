@@ -18,12 +18,13 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@discordjs/voice": "^0.19.0",
     "discord.js": "^14.14.1",
-    "@discordjs/voice": "^0.16.0",
     "dotenv": "^16.3.1",
-    "ytdl-core": "^4.11.5",
+    "libsodium-wrappers": "^0.7.13",
+    "node-cron": "^3.0.3",
     "spotify-web-api-node": "^5.0.2",
-    "node-cron": "^3.0.3"
+    "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
     "@types/node": "^20.10.6"
@@ -32,4 +33,3 @@
     "node": ">=18.0.0"
   }
 }
-

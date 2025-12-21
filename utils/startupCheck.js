@@ -22,6 +22,21 @@ export function checkDependencies() {
     }
     console.log('  ✅ dotenv');
 
+    if (!fs.existsSync('node_modules/@discordjs/voice')) {
+        console.log('  ❌ @discordjs/voice - REQUIRED!');
+        console.log('  💡 Install dengan: npm install @discordjs/voice');
+        return false;
+    }
+    console.log('  ✅ @discordjs/voice');
+
+    // Check for encryption library (libsodium-wrappers)
+    if (!fs.existsSync('node_modules/libsodium-wrappers')) {
+        console.log('  ⚠️  libsodium-wrappers - REQUIRED untuk voice encryption');
+        console.log('  💡 Install dengan: npm install libsodium-wrappers');
+        return false;
+    }
+    console.log('  ✅ libsodium-wrappers (voice encryption)');
+
     return true;
 }
 

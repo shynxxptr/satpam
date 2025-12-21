@@ -13,6 +13,16 @@ async function main() {
     console.log('='.repeat(50));
     console.log();
 
+    // Initialize libsodium for @discordjs/voice encryption
+    try {
+        await import('libsodium-wrappers');
+        console.log('✅ Voice encryption library loaded');
+    } catch (error) {
+        console.warn('⚠️  Warning: Could not load libsodium-wrappers:', error.message);
+        console.warn('   Voice features may not work correctly');
+    }
+    console.log();
+
     // Run startup checks
     if (!runAllChecks()) {
         console.log('\n❌ Startup checks failed. Exiting...');
