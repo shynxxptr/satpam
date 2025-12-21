@@ -45,6 +45,14 @@ export function checkDependencies() {
     }
     console.log('  ✅ @snazzah/davey (DAVE protocol)');
 
+    // Check for Opus encoder
+    if (!fs.existsSync('node_modules/@discordjs/opus')) {
+        console.log('  ⚠️  @discordjs/opus - REQUIRED untuk audio encoding');
+        console.log('  💡 Install dengan: npm install @discordjs/opus');
+        return false;
+    }
+    console.log('  ✅ @discordjs/opus (audio encoder)');
+
     return true;
 }
 

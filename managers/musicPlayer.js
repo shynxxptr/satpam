@@ -259,26 +259,32 @@ export const musicPlayer = {
             if (query.includes('spotify.com') || query.includes('spotify:')) {
                 song = await getSpotifyTrack(query);
             }
-            // Check if YouTube URL - Try to validate, but if error, fallback to search
+            // Check if YouTube URL - Always use search to avoid bot detection
             else if (ytdl.validateURL(query)) {
-                try {
-                    song = await getYouTubeInfo(query);
-                } catch (error) {
-                    // If URL validation fails due to bot detection, try search instead
-                    if (error.message && error.message.includes('Sign in')) {
-                        console.log('YouTube URL blocked, trying search instead...');
-                        // Extract video ID and search by it
-                        const videoId = query.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/)?.[1];
-                        if (videoId) {
-                            song = await searchYouTube(videoId);
-                            if (!song) {
-                                throw new Error('Tidak bisa mengakses URL YouTube. Coba gunakan search dengan kata kunci saja.');
-                            }
-                        } else {
-                            throw error;
+                // Extract video ID and use search instead of direct URL access
+                // This avoids YouTube bot detection
+                const videoId = query.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/)?.[1];
+                if (videoId) {
+                    console.log(`YouTube URL detected, using search for video ID: ${videoId}`);
+                    song = await searchYouTube(videoId);
+                    if (!song) {
+                        // If search fails, try direct URL as last resort
+                        try {
+                            song = await getYouTubeInfo(query);
+                        } catch (error) {
+                            throw new Error('Tidak bisa mengakses URL YouTube. Coba gunakan search dengan kata kunci saja.');
                         }
-                    } else {
-                        throw error;
+                    }
+                } else {
+                    // Invalid URL format, try direct access
+                    try {
+                        song = await getYouTubeInfo(query);
+                    } catch (error) {
+                        // Fallback to search
+                        song = await searchYouTube(query);
+                        if (!song) {
+                            throw new Error('Tidak bisa mengakses URL YouTube. Coba gunakan search dengan kata kunci saja.');
+                        }
                     }
                 }
             }
