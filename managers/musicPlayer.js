@@ -319,9 +319,14 @@ export const musicPlayer = {
     /**
      * Play music
      */
-    async play(query, channel, member) {
+    async play(query, channel, member, onErrorCallback = null) {
         const guildId = channel.guild.id;
         const state = getMusicState(guildId);
+
+        // Register error callback if provided
+        if (onErrorCallback) {
+            state.errorCallbacks.push(onErrorCallback);
+        }
 
         let song = null;
 
