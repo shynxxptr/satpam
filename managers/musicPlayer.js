@@ -23,8 +23,8 @@ export function initDisTube(client) {
             emitAddListWhenCreatingQueue: false,
             searchSongs: 0,
             customFilters: {}
-            // Note: DisTube handles YouTube bot detection internally
-            // YouTube cookie support may vary by DisTube version
+            // DisTube handles YouTube bot detection internally
+            // No need to configure YouTube cookies manually
         });
         
         // Setup DisTube event handlers
