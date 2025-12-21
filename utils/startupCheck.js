@@ -37,6 +37,14 @@ export function checkDependencies() {
     }
     console.log('  ✅ libsodium-wrappers (voice encryption)');
 
+    // Check for DAVE protocol library
+    if (!fs.existsSync('node_modules/@snazzah/davey')) {
+        console.log('  ⚠️  @snazzah/davey - REQUIRED untuk DAVE protocol');
+        console.log('  💡 Install dengan: npm install @snazzah/davey');
+        return false;
+    }
+    console.log('  ✅ @snazzah/davey (DAVE protocol)');
+
     return true;
 }
 
