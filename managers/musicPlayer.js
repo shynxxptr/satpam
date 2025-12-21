@@ -319,8 +319,36 @@ async function playNext(guildId, channel) {
             state.connection.subscribe(state.player);
         }
 
-        // Create audio resource
-        const resource = createAudioResourceFromYouTube(song.url);
+        // Create audio resource - with Spotify fallback on YouTube error
+        let resourceResult = await createAudioResourceFromYouTube(song.url, song.originalQuery || song.title);
+        
+        // If YouTube fails, try Spotify fallback
+        if (resourceResult.error && resourceResult.originalQuery && spotifyApi) {
+            console.log('YouTube error detected, trying Spotify fallback...');
+            const spotifyResult = await searchSpotifyTracks(resourceResult.originalQuery);
+            
+            if (spotifyResult) {
+                // Update song with Spotify result
+                song.url = spotifyResult.url;
+                song.spotifyTrack = spotifyResult.spotifyTrack;
+                song.spotifyFallback = true;
+                song.source = 'spotify';
+                
+                console.log(`Spotify fallback success: ${spotifyResult.title}`);
+                
+                // Try YouTube again with Spotify result URL
+                resourceResult = await createAudioResourceFromYouTube(spotifyResult.url);
+            }
+        }
+        
+        if (!resourceResult.resource) {
+            if (resourceResult.error === 'youtube_parsing') {
+                throw new Error('YouTube memblokir request. Spotify fallback juga tidak berhasil. Silakan coba lagi nanti.');
+            }
+            throw new Error(`Gagal membuat audio resource: ${resourceResult.error || 'Unknown error'}`);
+        }
+
+        const resource = resourceResult.resource;
         resource.volume?.setVolume(state.volume);
 
         // Play
