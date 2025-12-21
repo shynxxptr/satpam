@@ -9,6 +9,7 @@ let distube = null;
 
 /**
  * Initialize DisTube with Discord client
+ * According to https://distube.js.org/
  */
 export function initDisTube(client) {
     if (!distube) {
@@ -18,12 +19,33 @@ export function initDisTube(client) {
             leaveOnEmpty: false,
             emptyCooldown: 0,
             nsfw: false,
-            emitNewSongOnly: false,
+            emitNewSongOnly: true,
             emitAddSongWhenCreatingQueue: false,
             emitAddListWhenCreatingQueue: false,
             searchSongs: 0,
-            customFilters: {}
+            customFilters: {},
+            // DisTube handles YouTube bot detection better
+            youtubeCookie: process.env.YOUTUBE_COOKIE || undefined,
+            youtubeIdentityToken: process.env.YOUTUBE_IDENTITY_TOKEN || undefined
         });
+        
+        // Setup DisTube event handlers
+        distube.on('playSong', (queue, song) => {
+            console.log(`🎵 Playing: ${song.name} (${song.formattedDuration})`);
+        });
+        
+        distube.on('addSong', (queue, song) => {
+            console.log(`➕ Added to queue: ${song.name}`);
+        });
+        
+        distube.on('error', (channel, error) => {
+            console.error('❌ DisTube error:', error);
+        });
+        
+        distube.on('noRelated', (queue) => {
+            console.log('ℹ️  No related songs found');
+        });
+        
         console.log('✅ DisTube initialized');
     }
     return distube;
@@ -513,9 +535,14 @@ async function playNext(guildId, channel) {
  */
 export const musicPlayer = {
     /**
-     * Play music
+     * Play music using DisTube
+     * According to https://distube.js.org/ - using distube.play() directly
      */
     async play(query, channel, member, onErrorCallback = null) {
+        if (!distube) {
+            throw new Error('DisTube belum di-initialize. Pastikan bot sudah ready.');
+        }
+
         const guildId = channel.guild.id;
         const state = getMusicState(guildId);
 
@@ -524,150 +551,177 @@ export const musicPlayer = {
             state.errorCallbacks.push(onErrorCallback);
         }
 
-        let song = null;
-
         try {
-            // Check if Spotify URL
+            // Handle Spotify URL - convert to YouTube search first
             if (query.includes('spotify.com') || query.includes('spotify:')) {
-                song = await getSpotifyTrack(query);
-                song.originalQuery = query; // Store original query for fallback
-            }
-            // Check if YouTube URL - Use DisTube or youtube-sr to validate
-            else if (isYouTubeURL(query)) {
-                // Extract video ID and use search instead of direct URL access
-                // This avoids YouTube bot detection
-                const videoId = query.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/)?.[1];
-                if (videoId) {
-                    console.log(`YouTube URL detected, using search for video ID: ${videoId}`);
-                    song = await searchYouTube(videoId);
-                    if (!song) {
-                        // If search fails, try Spotify fallback
-                        if (spotifyApi) {
-                            console.log('YouTube search failed, trying Spotify fallback...');
-                            song = await searchSpotifyTracks(query);
-                        }
-                        if (!song) {
-                            // If Spotify also fails, try direct URL as last resort
-                            try {
-                                song = await getYouTubeInfo(query);
-                            } catch (error) {
-                                throw new Error('Tidak bisa mengakses URL YouTube dan Spotify fallback juga gagal. Coba gunakan search dengan kata kunci saja.');
-                            }
-                        }
+                if (spotifyApi) {
+                    const spotifySong = await getSpotifyTrack(query);
+                    if (spotifySong && spotifySong.spotifyTrack) {
+                        // Convert Spotify to YouTube search query
+                        const searchQuery = `${spotifySong.spotifyTrack.artists.join(' ')} ${spotifySong.spotifyTrack.name}`;
+                        query = searchQuery;
+                        console.log(`Spotify track converted to search: ${searchQuery}`);
                     }
                 } else {
-                    // Invalid URL format, try direct access first
+                    throw new Error('Spotify API tidak dikonfigurasi');
+                }
+            }
+
+            // Use DisTube to play - it handles search, resolve, and playback automatically
+            // DisTube supports YouTube, Spotify (via plugin), SoundCloud, and 700+ other sites
+            await distube.play(channel, query, {
+                member: member,
+                textChannel: null, // We'll handle messages separately
+                skip: false
+            });
+
+            // Get the queue to return song info
+            const queue = distube.getQueue(guildId);
+            if (!queue) {
+                throw new Error('Gagal membuat queue');
+            }
+
+            // Get the song that was added/playing
+            const song = queue.songs[queue.songs.length - 1];
+            
+            return {
+                url: song.url,
+                title: song.name || song.title,
+                duration: song.formattedDuration || song.durationFormatted,
+                thumbnail: song.thumbnail || song.thumbnailURL,
+                source: song.source || 'youtube',
+                requestedBy: member.id,
+                requestedByUsername: member.user.tag
+            };
+        } catch (error) {
+            // Handle DisTube errors
+            if (onErrorCallback) {
+                onErrorCallback(error.message, null);
+            }
+            
+            // Try Spotify fallback if YouTube fails
+            if (error.message && (error.message.includes('No results') || error.message.includes('No song found'))) {
+                if (spotifyApi && !query.includes('spotify')) {
+                    console.log('DisTube search failed, trying Spotify fallback...');
                     try {
-                        song = await getYouTubeInfo(query);
-                    } catch (error) {
-                        // If error, try Spotify fallback
-                        if (spotifyApi) {
-                            console.log('YouTube direct access failed, trying Spotify fallback...');
-                            song = await searchSpotifyTracks(query);
+                        const spotifyResult = await searchSpotifyTracks(query);
+                        if (spotifyResult) {
+                            // Try again with Spotify result
+                            const searchQuery = `${spotifyResult.spotifyTrack?.artists.join(' ') || ''} ${spotifyResult.title}`;
+                            await distube.play(channel, searchQuery, {
+                                member: member,
+                                textChannel: null,
+                                skip: false
+                            });
+                            
+                            const queue = distube.getQueue(guildId);
+                            const song = queue.songs[queue.songs.length - 1];
+                            
+                            return {
+                                url: song.url,
+                                title: song.name || song.title,
+                                duration: song.formattedDuration || song.durationFormatted,
+                                thumbnail: song.thumbnail || song.thumbnailURL,
+                                source: 'spotify',
+                                spotifyTrack: spotifyResult.spotifyTrack,
+                                requestedBy: member.id,
+                                requestedByUsername: member.user.tag
+                            };
                         }
-                        if (!song) {
-                            // Fallback to search
-                            song = await searchYouTube(query);
-                            if (!song) {
-                                throw new Error('Tidak bisa mengakses URL YouTube dan Spotify fallback juga gagal. Coba gunakan search dengan kata kunci saja.');
-                            }
-                        }
+                    } catch (fallbackError) {
+                        console.error('Spotify fallback error:', fallbackError);
                     }
                 }
-                song.originalQuery = query; // Store original query for fallback
             }
-            // Search YouTube first, fallback to Spotify if fails
-            else {
-                song = await searchYouTube(query);
-                if (!song && spotifyApi) {
-                    console.log('YouTube search failed, trying Spotify fallback...');
-                    song = await searchSpotifyTracks(query);
-                }
-                if (!song) {
-                    throw new Error('Tidak bisa menemukan lagu di YouTube maupun Spotify. Coba gunakan kata kunci yang lebih spesifik.');
-                }
-                song.originalQuery = query; // Store original query for fallback
-            }
-
-            // Add to queue
-            song.requestedBy = member.id;
-            song.requestedByUsername = member.user.tag;
-            state.queue.push(song);
-
-            // If nothing playing, start playing
-            if (!state.nowPlaying && state.player.state.status === AudioPlayerStatus.Idle) {
-                await playNext(guildId, channel);
-            }
-
-            return song;
-        } catch (error) {
+            
             throw error;
         }
     },
 
     /**
-     * Stop music
+     * Stop music using DisTube
      */
     stop(guildId) {
-        const state = getMusicState(guildId);
-        if (state.player) {
-            state.player.stop();
+        if (!distube) return false;
+        const queue = distube.getQueue(guildId);
+        if (queue) {
+            queue.stop();
+            return true;
         }
-        state.queue = [];
-        state.nowPlaying = null;
-        state.paused = false;
+        return false;
     },
 
     /**
-     * Pause music
+     * Pause music using DisTube
      */
     pause(guildId) {
-        const state = getMusicState(guildId);
-        if (state.player && state.player.state.status === AudioPlayerStatus.Playing) {
-            state.player.pause();
-            state.paused = true;
+        if (!distube) return false;
+        const queue = distube.getQueue(guildId);
+        if (queue && queue.playing) {
+            queue.pause();
             return true;
         }
         return false;
     },
 
     /**
-     * Resume music
+     * Resume music using DisTube
      */
     resume(guildId) {
-        const state = getMusicState(guildId);
-        if (state.player && state.player.state.status === AudioPlayerStatus.Paused) {
-            state.player.unpause();
-            state.paused = false;
+        if (!distube) return false;
+        const queue = distube.getQueue(guildId);
+        if (queue && queue.paused) {
+            queue.resume();
             return true;
         }
         return false;
     },
 
     /**
-     * Get now playing
+     * Get now playing using DisTube
      */
     getNowPlaying(guildId) {
-        const state = getMusicState(guildId);
-        return state.nowPlaying;
+        if (!distube) return null;
+        const queue = distube.getQueue(guildId);
+        if (queue && queue.songs.length > 0) {
+            const song = queue.songs[0];
+            return {
+                url: song.url,
+                title: song.name || song.title,
+                duration: song.formattedDuration || song.durationFormatted,
+                thumbnail: song.thumbnail || song.thumbnailURL,
+                source: song.source || 'youtube'
+            };
+        }
+        return null;
     },
 
     /**
-     * Get queue
+     * Get queue using DisTube
      */
     getQueue(guildId) {
-        const state = getMusicState(guildId);
-        return state.queue;
+        if (!distube) return [];
+        const queue = distube.getQueue(guildId);
+        if (queue) {
+            return queue.songs.map(song => ({
+                url: song.url,
+                title: song.name || song.title,
+                duration: song.formattedDuration || song.durationFormatted,
+                thumbnail: song.thumbnail || song.thumbnailURL,
+                source: song.source || 'youtube'
+            }));
+        }
+        return [];
     },
 
     /**
-     * Skip current song
+     * Skip current song using DisTube
      */
-    async skip(guildId, channel) {
-        const state = getMusicState(guildId);
-        if (state.player) {
-            state.player.stop();
-            await playNext(guildId, channel);
+    skip(guildId) {
+        if (!distube) return false;
+        const queue = distube.getQueue(guildId);
+        if (queue && queue.songs.length > 1) {
+            queue.skip();
             return true;
         }
         return false;
@@ -692,16 +746,18 @@ export const musicPlayer = {
      * Check if playing
      */
     isPlaying(guildId) {
-        const state = getMusicState(guildId);
-        return state.player?.state.status === AudioPlayerStatus.Playing;
+        if (!distube) return false;
+        const queue = distube.getQueue(guildId);
+        return queue ? queue.playing : false;
     },
 
     /**
-     * Check if paused
+     * Check if paused using DisTube
      */
     isPaused(guildId) {
-        const state = getMusicState(guildId);
-        return state.paused;
+        if (!distube) return false;
+        const queue = distube.getQueue(guildId);
+        return queue ? queue.paused : false;
     }
 };
 

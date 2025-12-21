@@ -521,7 +521,7 @@ export function setupPrefixCommands(botInstance) {
             }
 
             const guildId = message.guild.id;
-            const skipped = await musicPlayer.skip(guildId, channel);
+            const skipped = musicPlayer.skip(guildId);
             
             if (skipped) {
                 const nowPlaying = musicPlayer.getNowPlaying(guildId);
