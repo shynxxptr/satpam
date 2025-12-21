@@ -72,7 +72,17 @@ async function searchYouTube(query) {
  */
 async function getYouTubeInfo(url) {
     try {
-        const info = await ytdl.getInfo(url);
+        const info = await ytdl.getInfo(url, {
+            requestOptions: {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    cookie: process.env.YOUTUBE_COOKIE || ''
+                }
+            }
+        });
+        
         return {
             url: url,
             title: info.videoDetails.title,
@@ -82,6 +92,12 @@ async function getYouTubeInfo(url) {
         };
     } catch (error) {
         console.error('YouTube info error:', error);
+        
+        // Check if it's a "Sign in" error
+        if (error.message && (error.message.includes('Sign in') || error.message.includes('bot'))) {
+            throw new Error('YouTube memblokir request. Silakan coba lagi nanti atau gunakan search dengan kata kunci saja (bukan URL langsung).');
+        }
+        
         throw error;
     }
 }
