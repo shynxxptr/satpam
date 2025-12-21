@@ -292,13 +292,21 @@ export const musicPlayer = {
     /**
      * Play music using DisTube
      * According to https://distube.js.org/ - using distube.play() directly
+     * @param {string} query - Search query or URL
+     * @param {VoiceChannel} voiceChannel - User's voice channel (required by DisTube)
+     * @param {GuildMember} member - Discord member who requested
+     * @param {Function} onErrorCallback - Callback for errors
      */
-    async play(query, channel, member, onErrorCallback = null) {
+    async play(query, voiceChannel, member, onErrorCallback = null) {
         if (!distube) {
             throw new Error('DisTube belum di-initialize. Pastikan bot sudah ready.');
         }
 
-        const guildId = channel.guild.id;
+        if (!voiceChannel) {
+            throw new Error('User harus berada di voice channel untuk play music!');
+        }
+
+        const guildId = voiceChannel.guild.id;
 
         // Register error callback if provided
         if (onErrorCallback) {
@@ -326,7 +334,8 @@ export const musicPlayer = {
 
             // Use DisTube to play - it handles search, resolve, and playback automatically
             // DisTube supports YouTube, Spotify (via plugin), SoundCloud, and 700+ other sites
-            await distube.play(channel, query, {
+            // IMPORTANT: distube.play() requires VoiceChannel, not TextChannel!
+            await distube.play(voiceChannel, query, {
                 member: member,
                 textChannel: null, // We'll handle messages separately
                 skip: false
@@ -365,7 +374,7 @@ export const musicPlayer = {
                         if (spotifyResult) {
                             // Try again with Spotify result
                             const searchQuery = `${spotifyResult.spotifyTrack?.artists.join(' ') || ''} ${spotifyResult.title}`;
-                            await distube.play(channel, searchQuery, {
+                            await distube.play(voiceChannel, searchQuery, {
                                 member: member,
                                 textChannel: null,
                                 skip: false

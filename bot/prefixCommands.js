@@ -272,6 +272,17 @@ export function setupPrefixCommands(botInstance) {
                 return;
             }
 
+            // Check if user is in a voice channel
+            const voiceChannel = message.member?.voice?.channel;
+            if (!voiceChannel) {
+                const embed = createErrorEmbed(
+                    'Tidak Ada di Voice Channel',
+                    'Kamu harus berada di voice channel untuk menggunakan command ini!'
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
             // Show loading message
             const loadingMsg = await message.reply('⏳ Mencari lagu...');
 
@@ -286,8 +297,8 @@ export function setupPrefixCommands(botInstance) {
                     }
                 };
 
-                // Play music
-                const song = await musicPlayer.play(query, channel, message.member, errorCallback);
+                // Play music - pass voice channel to DisTube
+                const song = await musicPlayer.play(query, voiceChannel, message.member, errorCallback);
                 const guildId = message.guild.id;
                 const isNowPlaying = musicPlayer.isPlaying(guildId) && musicPlayer.getNowPlaying(guildId)?.url === song.url;
                 
@@ -336,7 +347,7 @@ export function setupPrefixCommands(botInstance) {
                             { name: '🎤 Artis', value: song.spotifyTrack.artists.join(', '), inline: true },
                             { name: '💿 Album', value: song.spotifyTrack.album || 'Unknown', inline: true }
                         ] : []),
-                        { name: '📍 Channel', value: `${channel}`, inline: true },
+                        { name: '📍 Channel', value: `${voiceChannel}`, inline: true },
                         { name: '👤 Requested by', value: `<@${song.requestedBy}>`, inline: true },
                         ...(song.source === 'spotify' ? [{ name: '🎧 Source', value: 'Spotify → YouTube', inline: true }] : [])
                     ]
