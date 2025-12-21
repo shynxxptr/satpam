@@ -19,12 +19,32 @@ export function initDisTube(client) {
         const cookiesPath = getYouTubeCookiesPath();
         const hasCookies = hasYouTubeCookies();
         
-        // Build extractor args for yt-dlp
+        // Build extractor args for yt-dlp with aggressive bot detection avoidance
         const extractorArgs = [
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            // Browser-like user agent
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             '--referer', 'https://www.youtube.com/',
+            // Headers to mimic real browser
+            '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             '--add-header', 'Accept-Language:en-US,en;q=0.9',
-            '--extractor-args', 'youtube:player_client=web'
+            '--add-header', 'Accept-Encoding:gzip, deflate, br',
+            '--add-header', 'DNT:1',
+            '--add-header', 'Connection:keep-alive',
+            '--add-header', 'Upgrade-Insecure-Requests:1',
+            '--add-header', 'Sec-Fetch-Dest:document',
+            '--add-header', 'Sec-Fetch-Mode:navigate',
+            '--add-header', 'Sec-Fetch-Site:none',
+            '--add-header', 'Sec-Fetch-User:?1',
+            '--add-header', 'sec-ch-ua:"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            '--add-header', 'sec-ch-ua-mobile:?0',
+            '--add-header', 'sec-ch-ua-platform:"Windows"',
+            // Try using Android client (better for avoiding detection)
+            '--extractor-args', 'youtube:player_client=android',
+            // Additional options
+            '--no-warnings',
+            '--no-check-certificate',
+            '--prefer-insecure',
+            '--no-playlist'
         ];
         
         // Add cookies file if available (helps avoid bot detection)
@@ -32,9 +52,17 @@ export function initDisTube(client) {
             extractorArgs.push('--cookies', cookiesPath);
             console.log(`✅ YouTube cookies file ditemukan: ${cookiesPath}`);
             console.log('   Menggunakan cookies untuk menghindari bot detection...');
+            
+            // With cookies, try web client first, fallback to android
+            // Replace the android client arg
+            const androidIndex = extractorArgs.indexOf('--extractor-args');
+            if (androidIndex !== -1 && extractorArgs[androidIndex + 1] === 'youtube:player_client=android') {
+                extractorArgs[androidIndex + 1] = 'youtube:player_client=web'; // Use web client with cookies
+            }
         } else {
             console.log('⚠️  YouTube cookies file tidak ditemukan.');
             console.log('   Tambahkan "youtube_cookies_path" di config.json dan file cookies.txt untuk hasil lebih baik.');
+            console.log('   Menggunakan Android client sebagai fallback...');
         }
         
         // Configure yt-dlp plugin for better YouTube bot detection avoidance
