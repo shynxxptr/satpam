@@ -79,8 +79,11 @@ export class BotInstance {
         }
 
         try {
-            // Convert to string to avoid precision issues with large numbers
+            // idleChannelId should already be a string from getIdleChannelId()
+            // But convert to string again just to be safe
             const channelId = String(this.idleChannelId);
+            console.log(`[Bot #${this.botNumber}] Attempting to fetch idle channel: ${channelId}`);
+            
             const channel = await this.client.channels.fetch(channelId);
             
             if (!channel) {

@@ -87,7 +87,9 @@ export function checkConfig() {
 
         // Check optional configs
         if (config.idle_voice_channel_id) {
-            console.log(`  ✅ Idle channel ID: ${config.idle_voice_channel_id}`);
+            const idleId = String(config.idle_voice_channel_id);
+            console.log(`  ✅ Idle channel ID: ${idleId}`);
+            console.log(`     💡 Tip: Gunakan string (e.g. "1451645891600453652") untuk menghindari precision issues`);
         } else {
             console.log(`  ℹ️  Idle channel ID tidak di-set (opsional)`);
         }

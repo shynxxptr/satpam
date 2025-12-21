@@ -93,10 +93,15 @@ export function getBotTokens() {
 
 /**
  * Get idle voice channel ID
+ * Returns as string to avoid JavaScript number precision issues with large Discord IDs
  */
 export function getIdleChannelId() {
     const config = loadConfig();
-    return config?.idle_voice_channel_id || null;
+    if (!config || !config.idle_voice_channel_id) {
+        return null;
+    }
+    // Convert to string to preserve precision for large Discord IDs
+    return String(config.idle_voice_channel_id);
 }
 
 /**

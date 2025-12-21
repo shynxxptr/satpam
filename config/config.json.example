@@ -28,7 +28,7 @@
     "donatur": [1450281880233447467],
     "loyalist": [1451645134700544262]
   },
-  "idle_voice_channel_id": 1451645891600453652,
+  "idle_voice_channel_id": "1451645891600453652",
   "music_enabled_bot": 1,
   "spotify": {
     "client_id": "your_spotify_client_id_here",
