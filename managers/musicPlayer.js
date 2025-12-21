@@ -447,11 +447,70 @@ export const musicPlayer = {
             // Use DisTube to play - it handles search, resolve, and playback automatically
             // DisTube supports YouTube, Spotify (via plugin), SoundCloud, and 700+ other sites
             // IMPORTANT: distube.play() requires VoiceChannel, not TextChannel!
-            await distube.play(voiceChannel, query, {
-                member: member,
-                textChannel: null, // We'll handle messages separately
-                skip: false
-            });
+            try {
+                await distube.play(voiceChannel, query, {
+                    member: member,
+                    textChannel: null, // We'll handle messages separately
+                    skip: false
+                });
+            } catch (playError) {
+                console.error('[MusicPlayer] distube.play() threw error:', playError);
+                
+                // Check if it's YouTube bot detection error - handle immediately
+                const isBotDetection = playError.message && (
+                    playError.message.includes('Sign in to confirm') ||
+                    playError.message.includes('not a bot') ||
+                    playError.name === 'UnrecoverableError' ||
+                    playError.name === 'PlayingError'
+                );
+                
+                if (isBotDetection && spotifyApi) {
+                    console.log('[MusicPlayer] Bot detection in play() - trying Spotify fallback immediately...');
+                    const storedQuery = originalQueries.get(guildId);
+                    
+                    if (storedQuery && !storedQuery.query.includes('spotify')) {
+                        try {
+                            const spotifyResult = await searchSpotifyTracks(storedQuery.query);
+                            if (spotifyResult) {
+                                console.log(`[MusicPlayer] Spotify fallback success: ${spotifyResult.title}`);
+                                
+                                // Try play with Spotify result
+                                const searchQuery = `${spotifyResult.spotifyTrack?.artists.join(' ') || ''} ${spotifyResult.title}`;
+                                await distube.play(voiceChannel, searchQuery, {
+                                    member: member,
+                                    textChannel: null,
+                                    skip: false
+                                });
+                                
+                                const queue = distube.getQueue(guildId);
+                                const song = queue.songs[queue.songs.length - 1];
+                                
+                                if (onErrorCallback) {
+                                    onErrorCallback(null, null, `✅ Auto-fallback ke Spotify: ${spotifyResult.title}`);
+                                }
+                                
+                                originalQueries.delete(guildId);
+                                
+                                return {
+                                    url: song.url,
+                                    title: song.name || song.title,
+                                    duration: song.formattedDuration || song.durationFormatted,
+                                    thumbnail: song.thumbnail || song.thumbnailURL,
+                                    source: 'spotify',
+                                    spotifyTrack: spotifyResult.spotifyTrack,
+                                    requestedBy: member.id,
+                                    requestedByUsername: member.user.tag
+                                };
+                            }
+                        } catch (fallbackError) {
+                            console.error('[MusicPlayer] Spotify fallback error:', fallbackError);
+                        }
+                    }
+                }
+                
+                // Re-throw if not handled
+                throw playError;
+            }
 
             // Get the queue to return song info
             const queue = distube.getQueue(guildId);
@@ -461,6 +520,9 @@ export const musicPlayer = {
 
             // Get the song that was added/playing
             const song = queue.songs[queue.songs.length - 1];
+            
+            // Clean up stored query on success
+            originalQueries.delete(guildId);
             
             return {
                 url: song.url,
@@ -473,6 +535,11 @@ export const musicPlayer = {
             };
         } catch (error) {
             // Handle DisTube errors
+            console.error('[MusicPlayer] Play error caught:', error.message);
+            
+            // Clean up stored query on error
+            originalQueries.delete(guildId);
+            
             if (onErrorCallback) {
                 onErrorCallback(error.message, null);
             }
