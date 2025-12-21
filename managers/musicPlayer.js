@@ -1,5 +1,5 @@
 import ytdl from '@distube/ytdl-core';
-import { createAudioPlayer, createAudioResource, AudioPlayerStatus, joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus } from '@discordjs/voice';
+import { createAudioPlayer, createAudioResource, AudioPlayerStatus, joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus, entersState } from '@discordjs/voice';
 import { YouTube } from 'youtube-sr';
 import SpotifyWebApi from 'spotify-web-api-node';
 import { getSpotifyCredentials } from '../utils/config.js';
@@ -33,8 +33,35 @@ if (spotifyCreds && spotifyCreds.client_id && spotifyCreds.client_secret) {
  */
 function getMusicState(guildId) {
     if (!musicStates.has(guildId)) {
+        const player = createAudioPlayer();
+        
+        // Setup error handler once
+        player.on('error', (error) => {
+            console.error('Audio player error:', error.message);
+            const state = musicStates.get(guildId);
+            if (state && state.queue.length > 0) {
+                // Try to play next song on error
+                setTimeout(() => {
+                    const nextSong = state.queue.shift();
+                    if (nextSong && state.connection) {
+                        try {
+                            const resource = createAudioResourceFromYouTube(nextSong.url);
+                            player.play(resource);
+                            state.nowPlaying = nextSong;
+                        } catch (err) {
+                            console.error('Error recovering from player error:', err);
+                            state.nowPlaying = null;
+                        }
+                    }
+                }, 1000);
+            } else {
+                const state = musicStates.get(guildId);
+                if (state) state.nowPlaying = null;
+            }
+        });
+        
         musicStates.set(guildId, {
-            player: createAudioPlayer(),
+            player: player,
             connection: null,
             queue: [],
             nowPlaying: null,
@@ -177,8 +204,14 @@ function createAudioResourceFromYouTube(url) {
             }
         });
 
+        // Handle stream errors
+        stream.on('error', (error) => {
+            console.error('YouTube stream error:', error.message);
+        });
+
         return createAudioResource(stream, {
-            inlineVolume: true
+            inlineVolume: true,
+            metadata: { url }
         });
     } catch (error) {
         console.error('Audio resource error:', error);
@@ -202,14 +235,7 @@ async function playNext(guildId, channel) {
     state.paused = false;
 
     try {
-        // Create audio resource
-        const resource = createAudioResourceFromYouTube(song.url);
-        resource.volume?.setVolume(state.volume);
-
-        // Play
-        state.player.play(resource);
-
-        // Setup connection if needed
+        // Setup connection first if needed
         if (!state.connection || state.connection.state.status === VoiceConnectionStatus.Disconnected) {
             state.connection = joinVoiceChannel({
                 channelId: channel.id,
@@ -219,24 +245,47 @@ async function playNext(guildId, channel) {
 
             // Wait for connection to be ready
             try {
-                await entersState(state.connection, VoiceConnectionStatus.Ready, 5000);
+                await entersState(state.connection, VoiceConnectionStatus.Ready, 10000);
             } catch (error) {
                 console.error('Voice connection timeout:', error);
-                throw new Error('Tidak bisa connect ke voice channel');
+                throw new Error('Tidak bisa connect ke voice channel. Pastikan bot memiliki permission untuk join voice channel.');
             }
 
             state.connection.subscribe(state.player);
         }
 
-        // Handle end of song
+        // Create audio resource
+        const resource = createAudioResourceFromYouTube(song.url);
+        resource.volume?.setVolume(state.volume);
+
+        // Play
+        state.player.play(resource);
+
+        // Handle end of song (remove all previous listeners first)
+        state.player.removeAllListeners(AudioPlayerStatus.Idle);
         state.player.once(AudioPlayerStatus.Idle, () => {
-            setTimeout(() => playNext(guildId, channel), 1000);
+            setTimeout(() => {
+                if (state.queue.length > 0) {
+                    playNext(guildId, channel).catch(err => {
+                        console.error('Error playing next song:', err);
+                        state.nowPlaying = null;
+                    });
+                } else {
+                    state.nowPlaying = null;
+                }
+            }, 1000);
         });
 
         return song;
     } catch (error) {
         console.error('Play error:', error);
         state.nowPlaying = null;
+        
+        // If it's a YouTube parsing error, provide helpful message
+        if (error.message && error.message.includes('parsing watch.html')) {
+            throw new Error('YouTube memblokir request. Silakan gunakan search dengan kata kunci (bukan URL langsung) atau coba lagi nanti.');
+        }
+        
         throw error;
     }
 }
