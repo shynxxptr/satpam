@@ -5,7 +5,7 @@ import SpotifyWebApi from 'spotify-web-api-node';
 import { getSpotifyCredentials } from '../utils/config.js';
 
 // Global music state
-const musicStates = new Map(); // guildId -> { player, connection, queue, nowPlaying, paused }
+const musicStates = new Map(); // guildId -> { player, connection, queue, nowPlaying, paused, errorCallbacks }
 
 // Initialize Spotify API if credentials available
 let spotifyApi = null;
@@ -41,25 +41,29 @@ function getMusicState(guildId) {
             const state = musicStates.get(guildId);
             if (!state) return;
             
-            // Clear current playing
+            const currentSong = state.nowPlaying;
             state.nowPlaying = null;
             
-            // If it's a YouTube parsing error, try to skip to next song
+            // Notify error callbacks
+            if (state.errorCallbacks.length > 0) {
+                const errorMsg = error.message && error.message.includes('parsing watch.html')
+                    ? 'YouTube memblokir request atau format berubah. Silakan gunakan search dengan kata kunci (bukan URL langsung).'
+                    : `Error memutar musik: ${error.message}`;
+                
+                state.errorCallbacks.forEach(callback => {
+                    try {
+                        callback(errorMsg, currentSong);
+                    } catch (err) {
+                        console.error('Error in error callback:', err);
+                    }
+                });
+                // Clear callbacks after notifying
+                state.errorCallbacks = [];
+            }
+            
+            // If it's a YouTube parsing error, log it
             if (error.message && error.message.includes('parsing watch.html')) {
-                console.log('YouTube parsing error detected, will try next song in queue...');
-                // Next song will be played automatically when player becomes Idle
-                // Or we can manually trigger if needed
-                if (state.queue.length > 0) {
-                    setTimeout(() => {
-                        // Get channel from connection if available
-                        if (state.connection && state.connection.joinConfig) {
-                            const channelId = state.connection.joinConfig.channelId;
-                            const guildId = state.connection.joinConfig.guildId;
-                            // We need to get channel object, but for now just log
-                            console.log(`Will attempt to play next song from queue (${state.queue.length} remaining)`);
-                        }
-                    }, 2000);
-                }
+                console.log('YouTube parsing error detected. Song will be skipped if queue has more items.');
             }
         });
         
@@ -69,7 +73,8 @@ function getMusicState(guildId) {
             queue: [],
             nowPlaying: null,
             paused: false,
-            volume: 1.0
+            volume: 1.0,
+            errorCallbacks: [] // Callbacks untuk notify user tentang errors
         });
     }
     return musicStates.get(guildId);

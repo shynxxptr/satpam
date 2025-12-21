@@ -276,10 +276,31 @@ export function setupPrefixCommands(botInstance) {
             const loadingMsg = await message.reply('⏳ Mencari lagu...');
 
             try {
+                // Setup error callback untuk notify user jika terjadi error saat playback
+                let playbackError = null;
+                const errorCallback = (errorMsg, failedSong) => {
+                    playbackError = { message: errorMsg, song: failedSong };
+                };
+
                 // Play music
-                const song = await musicPlayer.play(query, channel, message.member);
+                const song = await musicPlayer.play(query, channel, message.member, errorCallback);
                 const guildId = message.guild.id;
                 const isNowPlaying = musicPlayer.isPlaying(guildId) && musicPlayer.getNowPlaying(guildId)?.url === song.url;
+                
+                // Check if playback error occurred (async, might happen after we send success message)
+                setTimeout(async () => {
+                    if (playbackError) {
+                        const embed = createErrorEmbed(
+                            '❌ Error Memutar Musik',
+                            `**${playbackError.song?.title || 'Lagu'}** gagal diputar:\n\`\`\`${playbackError.message}\`\`\``
+                        );
+                        try {
+                            await message.channel.send({ embeds: [embed] });
+                        } catch (err) {
+                            console.error('Error sending error message:', err);
+                        }
+                    }
+                }, 3000); // Check after 3 seconds
 
                 const embed = createSuccessEmbed(
                     isNowPlaying ? '🎵 Musik Dimulai!' : '✅ Lagu Ditambahkan ke Queue',
