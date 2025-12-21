@@ -1,0 +1,368 @@
+import ytdl from '@distube/ytdl-core';
+import { createAudioPlayer, createAudioResource, AudioPlayerStatus, joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus } from '@discordjs/voice';
+import { YouTube } from 'youtube-sr';
+import SpotifyWebApi from 'spotify-web-api-node';
+import { getSpotifyCredentials } from '../utils/config.js';
+
+// Global music state
+const musicStates = new Map(); // guildId -> { player, connection, queue, nowPlaying, paused }
+
+// Initialize Spotify API if credentials available
+let spotifyApi = null;
+const spotifyCreds = getSpotifyCredentials();
+if (spotifyCreds && spotifyCreds.client_id && spotifyCreds.client_secret) {
+    spotifyApi = new SpotifyWebApi({
+        clientId: spotifyCreds.client_id,
+        clientSecret: spotifyCreds.client_secret
+    });
+    
+    // Get access token
+    spotifyApi.clientCredentialsGrant()
+        .then(data => {
+            spotifyApi.setAccessToken(data.body['access_token']);
+            console.log('✅ Spotify API initialized');
+        })
+        .catch(err => {
+            console.error('❌ Spotify API error:', err.message);
+            spotifyApi = null;
+        });
+}
+
+/**
+ * Get or create music state for guild
+ */
+function getMusicState(guildId) {
+    if (!musicStates.has(guildId)) {
+        musicStates.set(guildId, {
+            player: createAudioPlayer(),
+            connection: null,
+            queue: [],
+            nowPlaying: null,
+            paused: false,
+            volume: 1.0
+        });
+    }
+    return musicStates.get(guildId);
+}
+
+/**
+ * Search YouTube for query
+ */
+async function searchYouTube(query) {
+    try {
+        const results = await YouTube.search(query, { limit: 1, type: 'video' });
+        if (results.length === 0) return null;
+        
+        const video = results[0];
+        return {
+            url: video.url,
+            title: video.title,
+            duration: video.durationFormatted,
+            thumbnail: video.thumbnail?.url,
+            source: 'youtube'
+        };
+    } catch (error) {
+        console.error('YouTube search error:', error);
+        return null;
+    }
+}
+
+/**
+ * Get YouTube video info
+ */
+async function getYouTubeInfo(url) {
+    try {
+        const info = await ytdl.getInfo(url);
+        return {
+            url: url,
+            title: info.videoDetails.title,
+            duration: info.videoDetails.lengthSeconds,
+            thumbnail: info.videoDetails.thumbnails[0]?.url,
+            source: 'youtube'
+        };
+    } catch (error) {
+        console.error('YouTube info error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get Spotify track info and convert to YouTube
+ */
+async function getSpotifyTrack(spotifyUrl) {
+    if (!spotifyApi) {
+        throw new Error('Spotify API tidak dikonfigurasi');
+    }
+
+    try {
+        const trackId = extractSpotifyId(spotifyUrl);
+        if (!trackId) throw new Error('Invalid Spotify URL');
+
+        const data = await spotifyApi.getTrack(trackId);
+        const track = data.body;
+        
+        // Search YouTube dengan format: "Artist - Title"
+        const query = `${track.artists[0].name} - ${track.name}`;
+        const youtubeResult = await searchYouTube(query);
+        
+        if (!youtubeResult) {
+            throw new Error('Tidak bisa menemukan lagu di YouTube');
+        }
+
+        return {
+            ...youtubeResult,
+            spotifyTrack: {
+                name: track.name,
+                artists: track.artists.map(a => a.name),
+                album: track.album.name
+            },
+            source: 'spotify'
+        };
+    } catch (error) {
+        console.error('Spotify error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Extract Spotify ID from URL
+ */
+function extractSpotifyId(url) {
+    const patterns = [
+        /spotify:track:([a-zA-Z0-9]+)/,
+        /open\.spotify\.com\/track\/([a-zA-Z0-9]+)/
+    ];
+    
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) return match[1];
+    }
+    return null;
+}
+
+/**
+ * Create audio resource from YouTube URL
+ */
+function createAudioResourceFromYouTube(url) {
+    try {
+        const stream = ytdl(url, {
+            filter: 'audioonly',
+            quality: 'lowestaudio',
+            highWaterMark: 1 << 25,
+            requestOptions: {
+                headers: {
+                    cookie: process.env.YOUTUBE_COOKIE || ''
+                }
+            }
+        });
+
+        return createAudioResource(stream, {
+            inlineVolume: true
+        });
+    } catch (error) {
+        console.error('Audio resource error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Play next song in queue
+ */
+async function playNext(guildId, channel) {
+    const state = getMusicState(guildId);
+    
+    if (state.queue.length === 0) {
+        state.nowPlaying = null;
+        return;
+    }
+
+    const song = state.queue.shift();
+    state.nowPlaying = song;
+    state.paused = false;
+
+    try {
+        // Create audio resource
+        const resource = createAudioResourceFromYouTube(song.url);
+        resource.volume?.setVolume(state.volume);
+
+        // Play
+        state.player.play(resource);
+
+        // Setup connection if needed
+        if (!state.connection || state.connection.state.status === VoiceConnectionStatus.Disconnected) {
+            state.connection = joinVoiceChannel({
+                channelId: channel.id,
+                guildId: channel.guild.id,
+                adapterCreator: channel.guild.voiceAdapterCreator,
+            });
+
+            // Wait for connection to be ready
+            try {
+                await entersState(state.connection, VoiceConnectionStatus.Ready, 5000);
+            } catch (error) {
+                console.error('Voice connection timeout:', error);
+                throw new Error('Tidak bisa connect ke voice channel');
+            }
+
+            state.connection.subscribe(state.player);
+        }
+
+        // Handle end of song
+        state.player.once(AudioPlayerStatus.Idle, () => {
+            setTimeout(() => playNext(guildId, channel), 1000);
+        });
+
+        return song;
+    } catch (error) {
+        console.error('Play error:', error);
+        state.nowPlaying = null;
+        throw error;
+    }
+}
+
+/**
+ * Music Player Manager
+ */
+export const musicPlayer = {
+    /**
+     * Play music
+     */
+    async play(query, channel, member) {
+        const guildId = channel.guild.id;
+        const state = getMusicState(guildId);
+
+        let song = null;
+
+        try {
+            // Check if Spotify URL
+            if (query.includes('spotify.com') || query.includes('spotify:')) {
+                song = await getSpotifyTrack(query);
+            }
+            // Check if YouTube URL
+            else if (ytdl.validateURL(query)) {
+                song = await getYouTubeInfo(query);
+            }
+            // Search YouTube
+            else {
+                song = await searchYouTube(query);
+                if (!song) {
+                    throw new Error('Tidak bisa menemukan lagu. Coba gunakan URL YouTube langsung atau kata kunci yang lebih spesifik.');
+                }
+            }
+
+            // Add to queue
+            song.requestedBy = member.id;
+            song.requestedByUsername = member.user.tag;
+            state.queue.push(song);
+
+            // If nothing playing, start playing
+            if (!state.nowPlaying && state.player.state.status === AudioPlayerStatus.Idle) {
+                await playNext(guildId, channel);
+            }
+
+            return song;
+        } catch (error) {
+            throw error;
+        }
+    },
+
+    /**
+     * Stop music
+     */
+    stop(guildId) {
+        const state = getMusicState(guildId);
+        if (state.player) {
+            state.player.stop();
+        }
+        state.queue = [];
+        state.nowPlaying = null;
+        state.paused = false;
+    },
+
+    /**
+     * Pause music
+     */
+    pause(guildId) {
+        const state = getMusicState(guildId);
+        if (state.player && state.player.state.status === AudioPlayerStatus.Playing) {
+            state.player.pause();
+            state.paused = true;
+            return true;
+        }
+        return false;
+    },
+
+    /**
+     * Resume music
+     */
+    resume(guildId) {
+        const state = getMusicState(guildId);
+        if (state.player && state.player.state.status === AudioPlayerStatus.Paused) {
+            state.player.unpause();
+            state.paused = false;
+            return true;
+        }
+        return false;
+    },
+
+    /**
+     * Get now playing
+     */
+    getNowPlaying(guildId) {
+        const state = getMusicState(guildId);
+        return state.nowPlaying;
+    },
+
+    /**
+     * Get queue
+     */
+    getQueue(guildId) {
+        const state = getMusicState(guildId);
+        return state.queue;
+    },
+
+    /**
+     * Skip current song
+     */
+    async skip(guildId, channel) {
+        const state = getMusicState(guildId);
+        if (state.player) {
+            state.player.stop();
+            await playNext(guildId, channel);
+            return true;
+        }
+        return false;
+    },
+
+    /**
+     * Disconnect
+     */
+    disconnect(guildId) {
+        const state = getMusicState(guildId);
+        if (state.connection) {
+            state.connection.destroy();
+            state.connection = null;
+        }
+        if (state.player) {
+            state.player.stop();
+        }
+        musicStates.delete(guildId);
+    },
+
+    /**
+     * Check if playing
+     */
+    isPlaying(guildId) {
+        const state = getMusicState(guildId);
+        return state.player?.state.status === AudioPlayerStatus.Playing;
+    },
+
+    /**
+     * Check if paused
+     */
+    isPaused(guildId) {
+        const state = getMusicState(guildId);
+        return state.paused;
+    }
+};
+

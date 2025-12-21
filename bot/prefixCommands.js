@@ -3,6 +3,7 @@ import { getUserTier, getStayDurationHours, getTierInfo, getUserTierInfo, TIER_C
 import { sharedAssignments, channelTimers } from './commands.js';
 import { notificationManager } from '../managers/notificationManager.js';
 import { getMusicEnabledBot } from '../utils/config.js';
+import { musicPlayer } from '../managers/musicPlayer.js';
 import {
     createSuccessEmbed,
     createErrorEmbed,
@@ -271,24 +272,46 @@ export function setupPrefixCommands(botInstance) {
                 return;
             }
 
-            // TODO: Implement music player
-            const embed = createInfoEmbed(
-                'Music Feature Sedang Dikembangkan',
-                'Fitur music player sedang dalam pengembangan.\n' +
-                'Command yang kamu kirim:\n' +
-                `\`\`\`${query}\`\`\`\n\n` +
-                'Fitur yang akan datang:\n' +
-                '• Play music dari YouTube\n' +
-                '• Play music dari Spotify\n' +
-                '• Search dan play lagu\n' +
-                '• Control playback (pause, resume, stop)',
-                [
-                    { name: '🎵 Query', value: query, inline: false },
-                    { name: '📍 Channel', value: `${channel}`, inline: true },
-                    { name: '🛡️ Bot', value: `Satpam Bot #${botInstance.botNumber}`, inline: true }
-                ]
-            );
-            await message.reply({ embeds: [embed] });
+            // Show loading message
+            const loadingMsg = await message.reply('⏳ Mencari lagu...');
+
+            try {
+                // Play music
+                const song = await musicPlayer.play(query, channel, message.member);
+                const guildId = message.guild.id;
+                const isNowPlaying = musicPlayer.isPlaying(guildId) && musicPlayer.getNowPlaying(guildId)?.url === song.url;
+
+                const embed = createSuccessEmbed(
+                    isNowPlaying ? '🎵 Musik Dimulai!' : '✅ Lagu Ditambahkan ke Queue',
+                    isNowPlaying 
+                        ? `Sedang memutar: **${song.title}**` 
+                        : `**${song.title}** ditambahkan ke queue`,
+                    [
+                        { name: '🎵 Judul', value: song.title || 'Unknown', inline: false },
+                        ...(song.duration ? [{ name: '⏱️ Durasi', value: song.duration || 'Unknown', inline: true }] : []),
+                        ...(song.spotifyTrack ? [
+                            { name: '🎤 Artis', value: song.spotifyTrack.artists.join(', '), inline: true },
+                            { name: '💿 Album', value: song.spotifyTrack.album || 'Unknown', inline: true }
+                        ] : []),
+                        { name: '📍 Channel', value: `${channel}`, inline: true },
+                        { name: '👤 Requested by', value: `<@${song.requestedBy}>`, inline: true },
+                        ...(song.source === 'spotify' ? [{ name: '🎧 Source', value: 'Spotify → YouTube', inline: true }] : [])
+                    ]
+                );
+
+                // Add thumbnail if available
+                if (song.thumbnail) {
+                    embed.setThumbnail(song.thumbnail);
+                }
+
+                await loadingMsg.edit({ embeds: [embed] });
+            } catch (error) {
+                const embed = createErrorEmbed(
+                    'Error Memutar Musik',
+                    `Terjadi kesalahan saat memutar musik:\n\`\`\`${error.message}\`\`\``
+                );
+                await loadingMsg.edit({ embeds: [embed] });
+            }
             return;
         }
 
@@ -303,10 +326,26 @@ export function setupPrefixCommands(botInstance) {
                 return;
             }
 
-            const embed = createInfoEmbed(
-                'Music Feature Sedang Dikembangkan',
-                'Fitur music player sedang dalam pengembangan.\n' +
-                'Command stop akan tersedia setelah music player selesai diimplementasikan.'
+            const guildId = message.guild.id;
+            const nowPlaying = musicPlayer.getNowPlaying(guildId);
+
+            if (!nowPlaying && !musicPlayer.isPlaying(guildId)) {
+                const embed = createWarningEmbed(
+                    'Tidak Ada Musik yang Diputar',
+                    'Tidak ada musik yang sedang diputar atau di queue.'
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            musicPlayer.stop(guildId);
+            
+            const embed = createSuccessEmbed(
+                '⏹️ Musik Dihentikan',
+                'Musik telah dihentikan dan queue telah dikosongkan.',
+                [
+                    { name: '🛡️ Bot', value: `Satpam Bot #${botInstance.botNumber}`, inline: true }
+                ]
             );
             await message.reply({ embeds: [embed] });
             return;
@@ -323,12 +362,45 @@ export function setupPrefixCommands(botInstance) {
                 return;
             }
 
-            const embed = createInfoEmbed(
-                'Music Feature Sedang Dikembangkan',
-                'Fitur music player sedang dalam pengembangan.\n' +
-                'Command pause akan tersedia setelah music player selesai diimplementasikan.'
-            );
-            await message.reply({ embeds: [embed] });
+            const guildId = message.guild.id;
+            
+            if (!musicPlayer.isPlaying(guildId) && !musicPlayer.isPaused(guildId)) {
+                const embed = createWarningEmbed(
+                    'Tidak Ada Musik yang Diputar',
+                    'Tidak ada musik yang sedang diputar.'
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            if (musicPlayer.isPaused(guildId)) {
+                const embed = createInfoEmbed(
+                    'Musik Sudah Di-pause',
+                    'Musik sudah dalam keadaan pause. Gunakan `satpam!resume` untuk melanjutkan.'
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            const paused = musicPlayer.pause(guildId);
+            if (paused) {
+                const nowPlaying = musicPlayer.getNowPlaying(guildId);
+                const embed = createSuccessEmbed(
+                    '⏸️ Musik Di-pause',
+                    `Musik **${nowPlaying?.title || 'Unknown'}** telah di-pause.`,
+                    [
+                        { name: '🎵 Lagu', value: nowPlaying?.title || 'Unknown', inline: false },
+                        { name: '💡 Tip', value: 'Gunakan `satpam!resume` untuk melanjutkan', inline: false }
+                    ]
+                );
+                await message.reply({ embeds: [embed] });
+            } else {
+                const embed = createErrorEmbed(
+                    'Gagal Pause',
+                    'Tidak bisa pause musik saat ini.'
+                );
+                await message.reply({ embeds: [embed] });
+            }
             return;
         }
 
@@ -343,11 +415,148 @@ export function setupPrefixCommands(botInstance) {
                 return;
             }
 
+            const guildId = message.guild.id;
+            
+            if (!musicPlayer.isPaused(guildId)) {
+                if (!musicPlayer.isPlaying(guildId)) {
+                    const embed = createWarningEmbed(
+                        'Tidak Ada Musik yang Diputar',
+                        'Tidak ada musik yang sedang diputar atau di-pause.'
+                    );
+                    await message.reply({ embeds: [embed] });
+                    return;
+                } else {
+                    const embed = createInfoEmbed(
+                        'Musik Sudah Berjalan',
+                        'Musik sudah dalam keadaan play. Tidak perlu resume.'
+                    );
+                    await message.reply({ embeds: [embed] });
+                    return;
+                }
+            }
+
+            const resumed = musicPlayer.resume(guildId);
+            if (resumed) {
+                const nowPlaying = musicPlayer.getNowPlaying(guildId);
+                const embed = createSuccessEmbed(
+                    '▶️ Musik Dilanjutkan',
+                    `Musik **${nowPlaying?.title || 'Unknown'}** telah dilanjutkan.`,
+                    [
+                        { name: '🎵 Lagu', value: nowPlaying?.title || 'Unknown', inline: false }
+                    ]
+                );
+                await message.reply({ embeds: [embed] });
+            } else {
+                const embed = createErrorEmbed(
+                    'Gagal Resume',
+                    'Tidak bisa resume musik saat ini.'
+                );
+                await message.reply({ embeds: [embed] });
+            }
+            return;
+        }
+
+        // Command: skip (Music)
+        if (commandName === 'skip' || commandName === 'next') {
+            if (!botInstance.musicEnabled) {
+                const embed = createErrorEmbed(
+                    'Music Tidak Tersedia',
+                    `Hanya **Satpam Bot #${getMusicEnabledBot() || 1}** yang bisa mengontrol music!`
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            const channel = message.member.voice?.channel;
+            if (!channel) {
+                const embed = createErrorEmbed(
+                    'Tidak Ada di Voice Channel',
+                    'Kamu harus berada di voice channel untuk menggunakan command ini!'
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            const guildId = message.guild.id;
+            const skipped = await musicPlayer.skip(guildId, channel);
+            
+            if (skipped) {
+                const nowPlaying = musicPlayer.getNowPlaying(guildId);
+                const embed = createSuccessEmbed(
+                    '⏭️ Lagu Di-skip',
+                    nowPlaying 
+                        ? `Sekarang memutar: **${nowPlaying.title}**`
+                        : 'Queue kosong. Tidak ada lagu selanjutnya.',
+                    nowPlaying ? [
+                        { name: '🎵 Lagu', value: nowPlaying.title || 'Unknown', inline: false }
+                    ] : []
+                );
+                await message.reply({ embeds: [embed] });
+            } else {
+                const embed = createWarningEmbed(
+                    'Tidak Ada Lagu yang Diputar',
+                    'Tidak ada lagu yang sedang diputar untuk di-skip.'
+                );
+                await message.reply({ embeds: [embed] });
+            }
+            return;
+        }
+
+        // Command: queue (Music)
+        if (commandName === 'queue' || commandName === 'q') {
+            if (!botInstance.musicEnabled) {
+                const embed = createErrorEmbed(
+                    'Music Tidak Tersedia',
+                    `Hanya **Satpam Bot #${getMusicEnabledBot() || 1}** yang bisa melihat queue!`
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            const guildId = message.guild.id;
+            const nowPlaying = musicPlayer.getNowPlaying(guildId);
+            const queue = musicPlayer.getQueue(guildId);
+
+            if (!nowPlaying && queue.length === 0) {
+                const embed = createInfoEmbed(
+                    'Queue Kosong',
+                    'Tidak ada lagu yang sedang diputar atau dalam queue.'
+                );
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            let description = '';
+            if (nowPlaying) {
+                description += `**🎵 Sekarang Diputar:**\n${nowPlaying.title}\n\n`;
+            }
+            
+            if (queue.length > 0) {
+                description += `**📋 Queue (${queue.length} lagu):**\n`;
+                queue.slice(0, 10).forEach((song, index) => {
+                    description += `${index + 1}. ${song.title}\n`;
+                });
+                if (queue.length > 10) {
+                    description += `\n... dan ${queue.length - 10} lagu lainnya`;
+                }
+            } else {
+                description += '**📋 Queue kosong**';
+            }
+
             const embed = createInfoEmbed(
-                'Music Feature Sedang Dikembangkan',
-                'Fitur music player sedang dalam pengembangan.\n' +
-                'Command resume akan tersedia setelah music player selesai diimplementasikan.'
+                '📋 Music Queue',
+                description,
+                [
+                    { name: '🎵 Now Playing', value: nowPlaying?.title || 'Tidak ada', inline: false },
+                    { name: '📊 Queue Length', value: `${queue.length} lagu`, inline: true },
+                    { name: '🛡️ Bot', value: `Satpam Bot #${botInstance.botNumber}`, inline: true }
+                ]
             );
+            
+            if (nowPlaying?.thumbnail) {
+                embed.setThumbnail(nowPlaying.thumbnail);
+            }
+
             await message.reply({ embeds: [embed] });
             return;
         }
