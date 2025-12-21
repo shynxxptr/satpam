@@ -36,12 +36,61 @@ export function initDisTube(client) {
             console.log(`➕ Added to queue: ${song.name}`);
         });
         
-        distube.on('error', (channel, error) => {
+        distube.on('error', async (channel, error) => {
             console.error('❌ DisTube error:', error);
             
-            // Notify error callbacks
             if (channel && channel.guild) {
                 const guildId = channel.guild.id;
+                
+                // Check if it's YouTube bot detection error
+                const isBotDetection = error.message && (
+                    error.message.includes('Sign in to confirm') ||
+                    error.message.includes('not a bot') ||
+                    error.message.includes('bot detection') ||
+                    error.name === 'UnrecoverableError'
+                );
+                
+                // Try Spotify fallback if YouTube bot detection error
+                if (isBotDetection && spotifyApi) {
+                    const storedQuery = originalQueries.get(guildId);
+                    if (storedQuery && !storedQuery.query.includes('spotify')) {
+                        console.log('YouTube bot detection detected, trying Spotify fallback...');
+                        try {
+                            const spotifyResult = await searchSpotifyTracks(storedQuery.query);
+                            if (spotifyResult) {
+                                console.log(`Spotify fallback success: ${spotifyResult.title}`);
+                                
+                                // Try play with Spotify result
+                                const searchQuery = `${spotifyResult.spotifyTrack?.artists.join(' ') || ''} ${spotifyResult.title}`;
+                                await distube.play(storedQuery.voiceChannel, searchQuery, {
+                                    member: storedQuery.member,
+                                    textChannel: null,
+                                    skip: false
+                                });
+                                
+                                // Notify success
+                                const callbacks = errorCallbacks.get(guildId);
+                                if (callbacks && callbacks.length > 0) {
+                                    callbacks.forEach(callback => {
+                                        try {
+                                            callback(null, null, `✅ Auto-fallback ke Spotify: ${spotifyResult.title}`);
+                                        } catch (err) {
+                                            console.error('Error in success callback:', err);
+                                        }
+                                    });
+                                }
+                                
+                                originalQueries.delete(guildId);
+                                errorCallbacks.delete(guildId);
+                                return; // Success, don't notify error
+                            }
+                        } catch (fallbackError) {
+                            console.error('Spotify fallback error:', fallbackError);
+                        }
+                    }
+                }
+                
+                // Notify error callbacks
                 const callbacks = errorCallbacks.get(guildId);
                 if (callbacks && callbacks.length > 0) {
                     callbacks.forEach(callback => {
@@ -53,6 +102,9 @@ export function initDisTube(client) {
                     });
                     errorCallbacks.delete(guildId);
                 }
+                
+                // Clean up stored query
+                originalQueries.delete(guildId);
             }
         });
         
@@ -88,6 +140,9 @@ if (spotifyCreds && spotifyCreds.client_id && spotifyCreds.client_secret) {
 
 // Error callbacks storage (simple map for user notifications)
 const errorCallbacks = new Map(); // guildId -> array of callbacks
+
+// Store original queries for Spotify fallback on YouTube bot detection
+const originalQueries = new Map(); // guildId -> { query, voiceChannel, member }
 
 /**
  * Search YouTube for query using DisTube
@@ -315,6 +370,13 @@ export const musicPlayer = {
             }
             errorCallbacks.get(guildId).push(onErrorCallback);
         }
+        
+        // Store original query for Spotify fallback on YouTube bot detection
+        originalQueries.set(guildId, {
+            query: query,
+            voiceChannel: voiceChannel,
+            member: member
+        });
 
         try {
             // Handle Spotify URL - convert to YouTube search first
