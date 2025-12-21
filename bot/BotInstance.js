@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits, Collection, ChannelType } from 'discord.js';
+import { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus } from '@discordjs/voice';
 import { getIdleChannelId, getMusicEnabledBot } from '../utils/config.js';
 import { getUserTier, getStayDurationHours, getTierInfo } from '../managers/tierManager.js';
 import { setupSlashCommands, sharedAssignments, channelTimers } from './commands.js';
@@ -98,18 +99,38 @@ export class BotInstance {
             // Disconnect from current channel if any
             if (this.voiceConnection) {
                 this.voiceConnection.destroy();
+                this.voiceConnection = null;
             }
 
-            // Join idle channel
-            this.voiceConnection = await channel.join();
+            // Disconnect dari connection yang sudah ada di guild ini (jika ada)
+            const existingConnection = getVoiceConnection(channel.guild.id);
+            if (existingConnection) {
+                existingConnection.destroy();
+            }
+
+            // Join idle channel menggunakan @discordjs/voice
+            this.voiceConnection = joinVoiceChannel({
+                channelId: channel.id,
+                guildId: channel.guild.id,
+                adapterCreator: channel.guild.voiceAdapterCreator,
+            });
+
             this.currentChannel = channel;
             this.isIdle = true;
             this.callerUserId = null;
             this.stayUntil = null;
 
-            // Set deafen
+            // Set deafen (setelah connection ready)
             if (this.voiceConnection) {
-                this.voiceConnection.setDeaf(true);
+                this.voiceConnection.on(VoiceConnectionStatus.Ready, () => {
+                    // Set deafen setelah ready
+                    const member = channel.guild.members.cache.get(this.client.user.id);
+                    if (member && member.voice) {
+                        member.voice.setDeaf(true).catch(err => {
+                            console.log(`⚠️  Bot #${this.botNumber}: Tidak bisa set deafen: ${err.message}`);
+                        });
+                    }
+                });
             }
 
             console.log(`✅ Bot #${this.botNumber} join ke idle channel: ${channel.name} (${channelId})`);
@@ -148,21 +169,6 @@ export class BotInstance {
                 throw new Error(`Channel harus berupa voice channel. Tipe channel saat ini: ${channel.type} (harus ${ChannelType.GuildVoice})`);
             }
 
-            // Validasi bahwa channel memiliki method join (harus VoiceChannel)
-            if (typeof channel.join !== 'function') {
-                // Coba fetch ulang channel sebagai VoiceChannel
-                try {
-                    const fetchedChannel = await this.client.channels.fetch(channel.id);
-                    if (fetchedChannel && fetchedChannel.type === ChannelType.GuildVoice && typeof fetchedChannel.join === 'function') {
-                        channel = fetchedChannel;
-                    } else {
-                        throw new Error(`Channel tidak memiliki method join. Tipe: ${fetchedChannel?.type || 'unknown'}`);
-                    }
-                } catch (fetchError) {
-                    throw new Error(`Tidak bisa fetch channel atau channel bukan VoiceChannel: ${fetchError.message}`);
-                }
-            }
-
             // Cek apakah channel bisa di-join (permissions)
             if (!channel.joinable) {
                 throw new Error('Bot tidak memiliki permission untuk join channel ini. Pastikan bot memiliki permission "Connect" dan "View Channel"');
@@ -171,10 +177,22 @@ export class BotInstance {
             // Disconnect from current channel if any
             if (this.voiceConnection) {
                 this.voiceConnection.destroy();
+                this.voiceConnection = null;
             }
 
-            // Join channel
-            this.voiceConnection = await channel.join();
+            // Disconnect dari connection yang sudah ada di channel ini (jika ada)
+            const existingConnection = getVoiceConnection(channel.guild.id);
+            if (existingConnection) {
+                existingConnection.destroy();
+            }
+
+            // Join channel menggunakan @discordjs/voice
+            this.voiceConnection = joinVoiceChannel({
+                channelId: channel.id,
+                guildId: channel.guild.id,
+                adapterCreator: channel.guild.voiceAdapterCreator,
+            });
+
             this.currentChannel = channel;
             this.callerUserId = member.id;
             this.isIdle = false;
@@ -187,9 +205,16 @@ export class BotInstance {
             stayUntil.setHours(stayUntil.getHours() + stayDurationHours);
             this.stayUntil = stayUntil;
 
-            // Set deafen
+            // Set deafen (setelah connection ready)
             if (this.voiceConnection) {
-                this.voiceConnection.setDeaf(true);
+                this.voiceConnection.on(VoiceConnectionStatus.Ready, () => {
+                    const member = channel.guild.members.cache.get(this.client.user.id);
+                    if (member && member.voice) {
+                        member.voice.setDeaf(true).catch(err => {
+                            console.log(`⚠️  Bot #${this.botNumber}: Tidak bisa set deafen: ${err.message}`);
+                        });
+                    }
+                });
             }
 
             return { tier, stayDurationHours, stayUntil };

@@ -86,11 +86,11 @@ export function setupSlashCommands(botInstance) {
                 return;
             }
 
-            // Pastikan channel memiliki method join (harus VoiceChannel instance)
-            if (typeof channel.join !== 'function') {
+            // Cek permission untuk join channel
+            if (!channel.joinable) {
                 const embed = createErrorEmbed(
-                    'Channel Tidak Valid',
-                    'Channel tidak memiliki method join. Pastikan channel adalah VoiceChannel yang valid.'
+                    'Permission Tidak Cukup',
+                    'Bot tidak memiliki permission untuk join channel ini. Pastikan bot memiliki permission "Connect" dan "View Channel"'
                 );
                 await interaction.editReply({ embeds: [embed] });
                 return;
@@ -126,15 +126,6 @@ export function setupSlashCommands(botInstance) {
 
             // Join voice channel
             try {
-                // Debug: log channel info
-                console.log(`[Bot #${botInstance.botNumber}] Attempting to join channel:`, {
-                    id: channel.id,
-                    name: channel.name,
-                    type: channel.type,
-                    hasJoin: typeof channel.join === 'function',
-                    joinable: channel.joinable
-                });
-                
                 const result = await botInstance.joinChannel(channel, member);
 
                 sharedAssignments.set(channel.id, botInstance.botNumber);
@@ -246,11 +237,11 @@ export function setupSlashCommands(botInstance) {
                 return;
             }
 
-            // Pastikan channel memiliki method join (harus VoiceChannel instance)
-            if (typeof channel.join !== 'function') {
+            // Cek permission untuk join channel
+            if (!channel.joinable) {
                 const embed = createErrorEmbed(
-                    'Channel Tidak Valid',
-                    'Channel tidak memiliki method join. Pastikan channel adalah VoiceChannel yang valid.'
+                    'Permission Tidak Cukup',
+                    'Bot tidak memiliki permission untuk join channel ini. Pastikan bot memiliki permission "Connect" dan "View Channel"'
                 );
                 await interaction.editReply({ embeds: [embed] });
                 return;
