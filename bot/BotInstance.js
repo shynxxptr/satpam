@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Collection } from 'discord.js';
+import { Client, GatewayIntentBits, Collection, ChannelType } from 'discord.js';
 import { getIdleChannelId, getMusicEnabledBot } from '../utils/config.js';
 import { getUserTier, getStayDurationHours, getTierInfo } from '../managers/tierManager.js';
 import { setupSlashCommands, sharedAssignments, channelTimers } from './commands.js';
@@ -88,8 +88,8 @@ export class BotInstance {
                 return false;
             }
 
-            // Check if it's a voice channel (type 2 = VoiceChannel)
-            if (channel.type !== 2) {
+            // Check if it's a voice channel
+            if (channel.type !== ChannelType.GuildVoice) {
                 console.log(`⚠️  Bot #${this.botNumber}: Channel ${channel.name} (${channelId}) bukan voice channel!`);
                 console.log(`   💡 Idle channel harus berupa voice channel`);
                 return false;
@@ -143,14 +143,29 @@ export class BotInstance {
                 throw new Error('Channel tidak valid atau null');
             }
 
-            // Validasi bahwa channel memiliki method join (harus VoiceChannel)
-            if (typeof channel.join !== 'function') {
-                throw new Error(`Channel tidak memiliki method join. Pastikan channel adalah VoiceChannel (tipe: ${channel.type || 'unknown'})`);
+            // Validasi channel type (harus GuildVoice)
+            if (channel.type !== ChannelType.GuildVoice) {
+                throw new Error(`Channel harus berupa voice channel. Tipe channel saat ini: ${channel.type} (harus ${ChannelType.GuildVoice})`);
             }
 
-            // Validasi channel type (2 = VoiceChannel)
-            if (channel.type !== 2) {
-                throw new Error(`Channel harus berupa voice channel. Tipe channel saat ini: ${channel.type}`);
+            // Validasi bahwa channel memiliki method join (harus VoiceChannel)
+            if (typeof channel.join !== 'function') {
+                // Coba fetch ulang channel sebagai VoiceChannel
+                try {
+                    const fetchedChannel = await this.client.channels.fetch(channel.id);
+                    if (fetchedChannel && fetchedChannel.type === ChannelType.GuildVoice && typeof fetchedChannel.join === 'function') {
+                        channel = fetchedChannel;
+                    } else {
+                        throw new Error(`Channel tidak memiliki method join. Tipe: ${fetchedChannel?.type || 'unknown'}`);
+                    }
+                } catch (fetchError) {
+                    throw new Error(`Tidak bisa fetch channel atau channel bukan VoiceChannel: ${fetchError.message}`);
+                }
+            }
+
+            // Cek apakah channel bisa di-join (permissions)
+            if (!channel.joinable) {
+                throw new Error('Bot tidak memiliki permission untuk join channel ini. Pastikan bot memiliki permission "Connect" dan "View Channel"');
             }
 
             // Disconnect from current channel if any
@@ -158,6 +173,7 @@ export class BotInstance {
                 this.voiceConnection.destroy();
             }
 
+            // Join channel
             this.voiceConnection = await channel.join();
             this.currentChannel = channel;
             this.callerUserId = member.id;

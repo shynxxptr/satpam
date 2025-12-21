@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ChannelType } from 'discord.js';
 import { getUserTier, getStayDurationHours, getTierInfo, getUserTierInfo, TIER_CATEGORIES } from '../managers/tierManager.js';
 import { notificationManager } from '../managers/notificationManager.js';
 import {
@@ -62,7 +62,11 @@ export function setupSlashCommands(botInstance) {
 
             // Fetch channel untuk memastikan kita punya objek VoiceChannel yang valid
             try {
-                channel = await interaction.guild.channels.fetch(channel.id);
+                const fetchedChannel = await interaction.guild.channels.fetch(channel.id);
+                if (!fetchedChannel) {
+                    throw new Error('Channel tidak ditemukan');
+                }
+                channel = fetchedChannel;
             } catch (error) {
                 const embed = createErrorEmbed(
                     'Error Fetching Channel',
@@ -73,10 +77,20 @@ export function setupSlashCommands(botInstance) {
             }
 
             // Validasi tipe channel (harus voice channel)
-            if (!channel || channel.type !== 2) { // 2 = VoiceChannel in Discord.js v14
+            if (!channel || channel.type !== ChannelType.GuildVoice) {
                 const embed = createErrorEmbed(
                     'Channel Bukan Voice Channel',
-                    'Channel yang dipilih harus berupa voice channel!'
+                    `Channel yang dipilih harus berupa voice channel! (Tipe saat ini: ${channel?.type || 'unknown'})`
+                );
+                await interaction.editReply({ embeds: [embed] });
+                return;
+            }
+
+            // Pastikan channel memiliki method join (harus VoiceChannel instance)
+            if (typeof channel.join !== 'function') {
+                const embed = createErrorEmbed(
+                    'Channel Tidak Valid',
+                    'Channel tidak memiliki method join. Pastikan channel adalah VoiceChannel yang valid.'
                 );
                 await interaction.editReply({ embeds: [embed] });
                 return;
@@ -112,6 +126,15 @@ export function setupSlashCommands(botInstance) {
 
             // Join voice channel
             try {
+                // Debug: log channel info
+                console.log(`[Bot #${botInstance.botNumber}] Attempting to join channel:`, {
+                    id: channel.id,
+                    name: channel.name,
+                    type: channel.type,
+                    hasJoin: typeof channel.join === 'function',
+                    joinable: channel.joinable
+                });
+                
                 const result = await botInstance.joinChannel(channel, member);
 
                 sharedAssignments.set(channel.id, botInstance.botNumber);
@@ -199,7 +222,11 @@ export function setupSlashCommands(botInstance) {
 
             // Fetch channel untuk memastikan kita punya objek VoiceChannel yang valid
             try {
-                channel = await interaction.guild.channels.fetch(channel.id);
+                const fetchedChannel = await interaction.guild.channels.fetch(channel.id);
+                if (!fetchedChannel) {
+                    throw new Error('Channel tidak ditemukan');
+                }
+                channel = fetchedChannel;
             } catch (error) {
                 const embed = createErrorEmbed(
                     'Error Fetching Channel',
@@ -210,10 +237,20 @@ export function setupSlashCommands(botInstance) {
             }
 
             // Validasi tipe channel (harus voice channel)
-            if (!channel || channel.type !== 2) { // 2 = VoiceChannel
+            if (!channel || channel.type !== ChannelType.GuildVoice) {
                 const embed = createErrorEmbed(
                     'Channel Bukan Voice Channel',
-                    'Channel yang dipilih harus berupa voice channel!'
+                    `Channel yang dipilih harus berupa voice channel! (Tipe saat ini: ${channel?.type || 'unknown'})`
+                );
+                await interaction.editReply({ embeds: [embed] });
+                return;
+            }
+
+            // Pastikan channel memiliki method join (harus VoiceChannel instance)
+            if (typeof channel.join !== 'function') {
+                const embed = createErrorEmbed(
+                    'Channel Tidak Valid',
+                    'Channel tidak memiliki method join. Pastikan channel adalah VoiceChannel yang valid.'
                 );
                 await interaction.editReply({ embeds: [embed] });
                 return;
