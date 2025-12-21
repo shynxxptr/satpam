@@ -52,9 +52,17 @@ export class BotInstance {
             setupSlashCommands(this);
             setupPrefixCommands(this);
             
-            // Auto-join idle channel
+            // Auto-join idle channel (non-blocking, bot tetap jalan meski gagal)
             if (this.idleChannelId) {
-                setTimeout(() => this.joinIdleChannel(), 2000);
+                setTimeout(async () => {
+                    const success = await this.joinIdleChannel();
+                    if (!success) {
+                        console.log(`ℹ️  Bot #${this.botNumber}: Bot tetap aktif, tapi tidak akan auto-join idle channel`);
+                        console.log(`   💡 Bot masih bisa digunakan untuk jaga voice channel dengan command /panggil`);
+                    }
+                }, 2000);
+            } else {
+                console.log(`ℹ️  Bot #${this.botNumber}: Idle channel tidak dikonfigurasi (opsional)`);
             }
         });
 
@@ -64,12 +72,26 @@ export class BotInstance {
     }
 
     async joinIdleChannel() {
-        if (!this.idleChannelId) return false;
+        if (!this.idleChannelId) {
+            console.log(`ℹ️  Bot #${this.botNumber}: Idle channel ID tidak di-set (opsional)`);
+            return false;
+        }
 
         try {
-            const channel = await this.client.channels.fetch(this.idleChannelId);
-            if (!channel || channel.type !== 2) { // 2 = VoiceChannel
-                console.log(`⚠️  Bot #${this.botNumber}: Idle channel tidak ditemukan!`);
+            // Convert to string to avoid precision issues with large numbers
+            const channelId = String(this.idleChannelId);
+            const channel = await this.client.channels.fetch(channelId);
+            
+            if (!channel) {
+                console.log(`⚠️  Bot #${this.botNumber}: Idle channel dengan ID ${channelId} tidak ditemukan!`);
+                console.log(`   💡 Pastikan channel ID di config.json benar dan bot memiliki akses ke channel tersebut`);
+                return false;
+            }
+
+            // Check if it's a voice channel (type 2 = VoiceChannel)
+            if (channel.type !== 2) {
+                console.log(`⚠️  Bot #${this.botNumber}: Channel ${channel.name} (${channelId}) bukan voice channel!`);
+                console.log(`   💡 Idle channel harus berupa voice channel`);
                 return false;
             }
 
@@ -90,10 +112,26 @@ export class BotInstance {
                 this.voiceConnection.setDeaf(true);
             }
 
-            console.log(`✅ Bot #${this.botNumber} join ke idle channel: ${channel.name}`);
+            console.log(`✅ Bot #${this.botNumber} join ke idle channel: ${channel.name} (${channelId})`);
             return true;
         } catch (error) {
-            console.error(`❌ Bot #${this.botNumber}: Error join idle channel:`, error);
+            if (error.code === 10003 || error.status === 404) {
+                // Unknown Channel error
+                console.log(`⚠️  Bot #${this.botNumber}: Channel dengan ID ${this.idleChannelId} tidak ditemukan!`);
+                console.log(`   💡 Kemungkinan penyebab:`);
+                console.log(`      - Channel ID di config.json salah`);
+                console.log(`      - Channel sudah dihapus`);
+                console.log(`      - Bot tidak memiliki akses ke channel tersebut`);
+                console.log(`      - Bot tidak ada di server yang memiliki channel tersebut`);
+                console.log(`   💡 Bot tetap bisa berjalan, tapi tidak akan auto-join idle channel`);
+                console.log(`   💡 Untuk nonaktifkan fitur ini, hapus atau set "idle_voice_channel_id" ke null di config.json`);
+            } else if (error.code === 50013 || error.status === 403) {
+                // Missing Permissions
+                console.log(`⚠️  Bot #${this.botNumber}: Bot tidak memiliki permission untuk join channel ${this.idleChannelId}`);
+                console.log(`   💡 Pastikan bot memiliki permission "Connect" dan "View Channel"`);
+            } else {
+                console.error(`❌ Bot #${this.botNumber}: Error join idle channel:`, error.message || error);
+            }
             return false;
         }
     }
