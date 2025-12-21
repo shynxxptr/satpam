@@ -1,4 +1,5 @@
 import { DisTube } from 'distube';
+import { YtDlpPlugin } from '@distube/yt-dlp';
 import { YouTube } from 'youtube-sr';
 import SpotifyWebApi from 'spotify-web-api-node';
 import { getSpotifyCredentials } from '../utils/config.js';
@@ -12,6 +13,18 @@ let distube = null;
  */
 export function initDisTube(client) {
     if (!distube) {
+        // Configure yt-dlp plugin for better YouTube bot detection avoidance
+        const ytDlpPlugin = new YtDlpPlugin({
+            update: true, // Auto-update yt-dlp
+            // Custom extractor args to avoid bot detection
+            extractorArgs: [
+                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                '--referer', 'https://www.youtube.com/',
+                '--add-header', 'Accept-Language:en-US,en;q=0.9',
+                '--extractor-args', 'youtube:player_client=web'
+            ]
+        });
+        
         distube = new DisTube(client, {
             leaveOnStop: false,
             leaveOnFinish: false,
@@ -22,9 +35,8 @@ export function initDisTube(client) {
             emitAddSongWhenCreatingQueue: false,
             emitAddListWhenCreatingQueue: false,
             searchSongs: 0,
-            customFilters: {}
-            // DisTube handles YouTube bot detection internally
-            // No need to configure YouTube cookies manually
+            customFilters: {},
+            plugins: [ytDlpPlugin] // Use yt-dlp plugin for better YouTube handling
         });
         
         // Setup DisTube event handlers
@@ -456,24 +468,6 @@ export const musicPlayer = {
                     }
                 } else {
                     throw new Error('Spotify API tidak dikonfigurasi');
-                }
-            }
-            
-            // PRIORITY: Try Spotify search first for all queries to avoid YouTube bot detection
-            // Only if Spotify API is available and query is not a YouTube URL
-            let useSpotifyFirst = false;
-            if (spotifyApi && !isYouTubeURL(originalQuery) && !originalQuery.includes('spotify')) {
-                console.log(`[MusicPlayer] Trying Spotify search first for: "${originalQuery}"`);
-                const spotifyResult = await searchSpotifyTracks(originalQuery);
-                if (spotifyResult) {
-                    console.log(`[MusicPlayer] Spotify found: ${spotifyResult.title}`);
-                    // Use Spotify result to create better YouTube search query
-                    const artist = spotifyResult.spotifyTrack?.artists[0] || '';
-                    const title = spotifyResult.spotifyTrack?.name || spotifyResult.title;
-                    const cleanTitle = title.replace(new RegExp(`^${artist}\\s*-?\\s*`, 'i'), '').trim();
-                    query = cleanTitle ? `${artist} - ${cleanTitle}` : title;
-                    useSpotifyFirst = true;
-                    console.log(`[MusicPlayer] Using Spotify result for YouTube search: "${query}"`);
                 }
             }
 
