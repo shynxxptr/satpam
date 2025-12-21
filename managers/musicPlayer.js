@@ -36,18 +36,69 @@ function getMusicState(guildId) {
         const player = createAudioPlayer();
         
         // Setup error handler once
-        player.on('error', (error) => {
+        player.on('error', async (error) => {
             console.error('Audio player error:', error.message);
             const state = musicStates.get(guildId);
             if (!state) return;
             
             const currentSong = state.nowPlaying;
+            const isParsingError = error.message && error.message.includes('parsing watch.html');
+            
+            // If YouTube parsing error and we have original query, try Spotify fallback
+            if (isParsingError && currentSong && (currentSong.originalQuery || currentSong.title) && spotifyApi && !currentSong.spotifyFallback && state.currentChannel) {
+                console.log('YouTube parsing error detected, trying Spotify fallback...');
+                
+                try {
+                    const query = currentSong.originalQuery || currentSong.title;
+                    const spotifyResult = await searchSpotifyTracks(query);
+                    
+                    if (spotifyResult) {
+                        console.log(`Spotify fallback success: ${spotifyResult.title}`);
+                        
+                        // Update song
+                        currentSong.url = spotifyResult.url;
+                        currentSong.spotifyTrack = spotifyResult.spotifyTrack;
+                        currentSong.spotifyFallback = true;
+                        currentSong.source = 'spotify';
+                        
+                        // Retry playback with Spotify result
+                        state.nowPlaying = currentSong;
+                        
+                        try {
+                            const resourceResult = await createAudioResourceFromYouTube(spotifyResult.url);
+                            if (resourceResult.resource) {
+                                const resource = resourceResult.resource;
+                                resource.volume?.setVolume(state.volume);
+                                state.player.play(resource);
+                                
+                                // Notify success
+                                if (state.errorCallbacks.length > 0) {
+                                    state.errorCallbacks.forEach(callback => {
+                                        try {
+                                            callback(null, currentSong, `✅ Auto-fallback ke Spotify: ${spotifyResult.title}`);
+                                        } catch (err) {
+                                            console.error('Error in success callback:', err);
+                                        }
+                                    });
+                                }
+                                return; // Success, don't continue with error handling
+                            }
+                        } catch (retryError) {
+                            console.error('Spotify fallback retry error:', retryError);
+                        }
+                    }
+                } catch (fallbackError) {
+                    console.error('Spotify fallback error:', fallbackError);
+                }
+            }
+            
+            // If fallback failed or not applicable, proceed with normal error handling
             state.nowPlaying = null;
             
             // Notify error callbacks
             if (state.errorCallbacks.length > 0) {
-                const errorMsg = error.message && error.message.includes('parsing watch.html')
-                    ? 'YouTube memblokir request atau format berubah. Silakan gunakan search dengan kata kunci (bukan URL langsung).'
+                const errorMsg = isParsingError
+                    ? 'YouTube memblokir request. Spotify fallback juga gagal. Silakan coba lagi nanti.'
                     : `Error memutar musik: ${error.message}`;
                 
                 state.errorCallbacks.forEach(callback => {
@@ -62,8 +113,8 @@ function getMusicState(guildId) {
             }
             
             // If it's a YouTube parsing error, log it
-            if (error.message && error.message.includes('parsing watch.html')) {
-                console.log('YouTube parsing error detected. Song will be skipped if queue has more items.');
+            if (isParsingError) {
+                console.log('YouTube parsing error detected. Spotify fallback attempted but failed or not available.');
             }
         });
         
@@ -74,7 +125,8 @@ function getMusicState(guildId) {
             nowPlaying: null,
             paused: false,
             volume: 1.0,
-            errorCallbacks: [] // Callbacks untuk notify user tentang errors
+            errorCallbacks: [],
+            currentChannel: null // Store channel for error retry // Callbacks untuk notify user tentang errors
         });
     }
     return musicStates.get(guildId);
@@ -289,6 +341,9 @@ async function createAudioResourceFromYouTube(url, originalQuery = null) {
  */
 async function playNext(guildId, channel) {
     const state = getMusicState(guildId);
+    
+    // Store channel reference for error retry
+    state.currentChannel = channel;
     
     if (state.queue.length === 0) {
         state.nowPlaying = null;
