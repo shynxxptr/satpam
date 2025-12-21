@@ -22,10 +22,9 @@ export function initDisTube(client) {
             emitAddSongWhenCreatingQueue: false,
             emitAddListWhenCreatingQueue: false,
             searchSongs: 0,
-            customFilters: {},
-            // DisTube handles YouTube bot detection better
-            youtubeCookie: process.env.YOUTUBE_COOKIE || undefined,
-            youtubeIdentityToken: process.env.YOUTUBE_IDENTITY_TOKEN || undefined
+            customFilters: {}
+            // Note: DisTube handles YouTube bot detection internally
+            // YouTube cookie support may vary by DisTube version
         });
         
         // Setup DisTube event handlers
