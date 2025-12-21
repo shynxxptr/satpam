@@ -1,8 +1,33 @@
-import ytdl from '@distube/ytdl-core';
+import { DisTube } from 'distube';
 import { createAudioPlayer, createAudioResource, AudioPlayerStatus, joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus, entersState } from '@discordjs/voice';
 import { YouTube } from 'youtube-sr';
 import SpotifyWebApi from 'spotify-web-api-node';
 import { getSpotifyCredentials } from '../utils/config.js';
+
+// DisTube instance (will be initialized when we have client)
+let distube = null;
+
+/**
+ * Initialize DisTube with Discord client
+ */
+export function initDisTube(client) {
+    if (!distube) {
+        distube = new DisTube(client, {
+            leaveOnStop: false,
+            leaveOnFinish: false,
+            leaveOnEmpty: false,
+            emptyCooldown: 0,
+            nsfw: false,
+            emitNewSongOnly: false,
+            emitAddSongWhenCreatingQueue: false,
+            emitAddListWhenCreatingQueue: false,
+            searchSongs: 0,
+            customFilters: {}
+        });
+        console.log('✅ DisTube initialized');
+    }
+    return distube;
+}
 
 // Global music state
 const musicStates = new Map(); // guildId -> { player, connection, queue, nowPlaying, paused, errorCallbacks }
@@ -133,9 +158,30 @@ function getMusicState(guildId) {
 }
 
 /**
- * Search YouTube for query
+ * Search YouTube for query using DisTube
  */
 async function searchYouTube(query) {
+    // Try DisTube first (better bot detection handling)
+    if (distube) {
+        try {
+            const results = await distube.search(query, { limit: 1, safeSearch: false });
+            if (results && results.length > 0) {
+                const song = results[0];
+                return {
+                    url: song.url,
+                    title: song.name || song.title,
+                    duration: song.formattedDuration || song.durationFormatted,
+                    thumbnail: song.thumbnail || song.thumbnailURL,
+                    source: 'youtube'
+                };
+            }
+        } catch (error) {
+            console.error('DisTube search error:', error);
+            // Fallback to youtube-sr
+        }
+    }
+    
+    // Fallback to youtube-sr
     try {
         const results = await YouTube.search(query, { limit: 1, type: 'video' });
         if (results.length === 0) return null;
@@ -155,37 +201,52 @@ async function searchYouTube(query) {
 }
 
 /**
- * Get YouTube video info
+ * Get YouTube video info using DisTube
  */
 async function getYouTubeInfo(url) {
+    if (!distube) {
+        throw new Error('DisTube belum di-initialize');
+    }
+
     try {
-        const info = await ytdl.getInfo(url, {
-            requestOptions: {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-us,en;q=0.5',
-                    cookie: process.env.YOUTUBE_COOKIE || ''
-                }
-            }
-        });
+        // Use DisTube to resolve URL
+        const results = await distube.search(url, { limit: 1, safeSearch: false });
+        if (!results || results.length === 0) {
+            throw new Error('Tidak bisa menemukan video YouTube');
+        }
         
+        const song = results[0];
         return {
-            url: url,
-            title: info.videoDetails.title,
-            duration: info.videoDetails.lengthSeconds,
-            thumbnail: info.videoDetails.thumbnails[0]?.url,
+            url: song.url,
+            title: song.name || song.title,
+            duration: song.formattedDuration || song.durationFormatted,
+            thumbnail: song.thumbnail || song.thumbnailURL,
             source: 'youtube'
         };
     } catch (error) {
         console.error('YouTube info error:', error);
         
-        // Check if it's a "Sign in" error
-        if (error.message && (error.message.includes('Sign in') || error.message.includes('bot'))) {
-            throw new Error('YouTube memblokir request. Silakan coba lagi nanti atau gunakan search dengan kata kunci saja (bukan URL langsung).');
+        // Fallback to youtube-sr if DisTube fails
+        try {
+            const results = await YouTube.search(url, { limit: 1, type: 'video' });
+            if (results.length === 0) {
+                throw new Error('Tidak bisa menemukan video YouTube');
+            }
+            
+            const video = results[0];
+            return {
+                url: video.url,
+                title: video.title,
+                duration: video.durationFormatted,
+                thumbnail: video.thumbnail?.url,
+                source: 'youtube'
+            };
+        } catch (fallbackError) {
+            if (error.message && (error.message.includes('Sign in') || error.message.includes('bot'))) {
+                throw new Error('YouTube memblokir request. Silakan coba lagi nanti atau gunakan search dengan kata kunci saja (bukan URL langsung).');
+            }
+            throw error;
         }
-        
-        throw error;
     }
 }
 
@@ -270,6 +331,13 @@ async function getSpotifyTrack(spotifyUrl) {
 }
 
 /**
+ * Check if URL is YouTube URL
+ */
+function isYouTubeURL(url) {
+    return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)/.test(url);
+}
+
+/**
  * Extract Spotify ID from URL
  */
 function extractSpotifyId(url) {
@@ -286,11 +354,13 @@ function extractSpotifyId(url) {
 }
 
 /**
- * Create audio resource from YouTube URL
+ * Create audio resource from YouTube URL using DisTube's ytdl-core
  * Returns { resource, error } - error will be set if YouTube fails and should fallback to Spotify
  */
 async function createAudioResourceFromYouTube(url, originalQuery = null) {
     try {
+        // Use @distube/ytdl-core which has better bot detection handling than regular ytdl-core
+        
         const stream = ytdl(url, {
             filter: 'audioonly',
             quality: 'lowestaudio',
@@ -319,16 +389,18 @@ async function createAudioResourceFromYouTube(url, originalQuery = null) {
         });
 
         // Handle resource errors
-        resource.playStream.on('error', (error) => {
-            console.error('Audio resource stream error:', error.message);
-        });
+        if (resource.playStream) {
+            resource.playStream.on('error', (error) => {
+                console.error('Audio resource stream error:', error.message);
+            });
+        }
 
         return { resource, error: null };
     } catch (error) {
         console.error('Audio resource creation error:', error);
         
         // If it's a parsing error, mark for Spotify fallback
-        if (error.message && error.message.includes('parsing watch.html')) {
+        if (error.message && (error.message.includes('parsing watch.html') || error.message.includes('Sign in') || error.message.includes('bot'))) {
             return { resource: null, error: 'youtube_parsing', originalQuery };
         }
         
@@ -462,8 +534,8 @@ export const musicPlayer = {
                 song = await getSpotifyTrack(query);
                 song.originalQuery = query; // Store original query for fallback
             }
-            // Check if YouTube URL - Always use search to avoid bot detection
-            else if (ytdl.validateURL(query)) {
+            // Check if YouTube URL - Use DisTube or youtube-sr to validate
+            else if (isYouTubeURL(query)) {
                 // Extract video ID and use search instead of direct URL access
                 // This avoids YouTube bot detection
                 const videoId = query.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/)?.[1];

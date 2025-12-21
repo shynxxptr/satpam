@@ -5,6 +5,7 @@ import { getUserTier, getStayDurationHours, getTierInfo } from '../managers/tier
 import { setupSlashCommands, sharedAssignments, channelTimers } from './commands.js';
 import { setupPrefixCommands } from './prefixCommands.js';
 import { backupManager, AUTO_BACKUP_INTERVAL } from '../managers/backupManager.js';
+import { initDisTube } from '../managers/musicPlayer.js';
 
 /**
  * Bot Instance Class
