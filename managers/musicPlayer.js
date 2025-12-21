@@ -39,24 +39,23 @@ function getMusicState(guildId) {
         player.on('error', (error) => {
             console.error('Audio player error:', error.message);
             const state = musicStates.get(guildId);
-            if (state && state.queue.length > 0) {
-                // Try to play next song on error
-                setTimeout(() => {
-                    const nextSong = state.queue.shift();
-                    if (nextSong && state.connection) {
-                        try {
-                            const resource = createAudioResourceFromYouTube(nextSong.url);
-                            player.play(resource);
-                            state.nowPlaying = nextSong;
-                        } catch (err) {
-                            console.error('Error recovering from player error:', err);
-                            state.nowPlaying = null;
-                        }
-                    }
-                }, 1000);
-            } else {
-                const state = musicStates.get(guildId);
-                if (state) state.nowPlaying = null;
+            if (!state) return;
+            
+            // Clear current playing
+            state.nowPlaying = null;
+            
+            // If it's a YouTube parsing error, skip to next song
+            if (error.message && error.message.includes('parsing watch.html')) {
+                console.log('YouTube parsing error detected, skipping to next song...');
+                if (state.queue.length > 0 && state.connection) {
+                    setTimeout(() => {
+                        playNext(guildId, state.connection.joinConfig.channelId ? 
+                            { id: state.connection.joinConfig.channelId, guild: { id: guildId } } : null)
+                            .catch(err => {
+                                console.error('Error playing next song after error:', err);
+                            });
+                    }, 2000);
+                }
             }
         });
         
@@ -204,17 +203,31 @@ function createAudioResourceFromYouTube(url) {
             }
         });
 
-        // Handle stream errors
+        // Handle stream errors - don't throw, just log
         stream.on('error', (error) => {
             console.error('YouTube stream error:', error.message);
+            // Error will be caught by audio player error handler
         });
 
-        return createAudioResource(stream, {
+        const resource = createAudioResource(stream, {
             inlineVolume: true,
             metadata: { url }
         });
+
+        // Handle resource errors
+        resource.playStream.on('error', (error) => {
+            console.error('Audio resource stream error:', error.message);
+        });
+
+        return resource;
     } catch (error) {
-        console.error('Audio resource error:', error);
+        console.error('Audio resource creation error:', error);
+        
+        // If it's a parsing error, provide helpful message
+        if (error.message && error.message.includes('parsing watch.html')) {
+            throw new Error('YouTube memblokir request atau format berubah. Silakan gunakan search dengan kata kunci (bukan URL langsung).');
+        }
+        
         throw error;
     }
 }
