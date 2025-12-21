@@ -112,6 +112,7 @@ Cookies YouTube memiliki expiration time. Jika bot mulai error lagi dengan "Sign
 - Pastikan path di `config.json` benar
 - Pastikan file `cookies.txt` ada di lokasi yang dimaksud
 - Check permissions file (harus bisa dibaca)
+- Cek apakah file benar-benar bernama `cookies.txt` (case-sensitive di Linux)
 
 ### Error: "Invalid cookies format"
 - Pastikan cookies dalam format Netscape (standard cookies.txt format)
@@ -119,10 +120,46 @@ Cookies YouTube memiliki expiration time. Jika bot mulai error lagi dengan "Sign
 - Re-export cookies jika perlu
 
 ### Masih Error "Sign in to confirm"
-- Cookies mungkin sudah expired → Re-export cookies
-- Cookies mungkin invalid → Coba export ulang
-- Akun YouTube mungkin terdeteksi sebagai bot → Coba dengan akun berbeda (tidak disarankan)
-- YouTube mungkin memblokir IP → Tunggu beberapa jam atau gunakan IP berbeda
+
+**Penyebab umum dan solusi:**
+
+1. **Cookies sudah expired atau invalid**
+   - Cookies YouTube biasanya expire setelah beberapa hari
+   - **Solusi:** Re-export cookies dari browser yang baru saja login ke YouTube
+   - Pastikan saat export, Anda benar-benar login (lihat profile di pojok kanan atas YouTube)
+
+2. **Cookies tidak lengkap**
+   - Pastikan cookies file berisi minimal: `SID`, `HSID`, `SSID`, `APISID`, `SAPISID`, `LOGIN_INFO`, `__Secure-3PSID`
+   - **Solusi:** Export ulang cookies dan pastikan extension mengexport semua cookies YouTube
+
+3. **Cookies dari browser yang tidak login**
+   - Jika Anda export cookies tanpa login, cookies tidak akan berfungsi
+   - **Solusi:** Pastikan login ke YouTube dulu sebelum export cookies
+
+4. **IP address terdeteksi sebagai bot**
+   - YouTube mungkin memblokir IP server Anda
+   - **Solusi:** 
+     - Tunggu beberapa jam dan coba lagi
+     - Gunakan VPN atau proxy (jika memungkinkan)
+     - Restart router untuk mendapatkan IP baru (jika dynamic IP)
+
+5. **yt-dlp perlu update**
+   - yt-dlp perlu update secara berkala untuk mengatasi perubahan YouTube
+   - **Solusi:** Update yt-dlp di server:
+     ```bash
+     pip install --upgrade yt-dlp
+     ```
+
+6. **Cookies dari akun yang sudah diblokir**
+   - Jika akun YouTube Anda sering melakukan scraping, mungkin sudah diblokir
+   - **Solusi:** Gunakan akun YouTube berbeda (tidak disarankan untuk production)
+
+### Tips Tambahan:
+
+- **Gunakan akun YouTube yang "bersih"** (tidak pernah digunakan untuk bot/scraping sebelumnya)
+- **Export cookies saat browsing normal** YouTube (buka beberapa video, scroll, dll) untuk membuat cookies lebih "natural"
+- **Update cookies secara berkala** (setiap 1-2 minggu) untuk menghindari expiration
+- **Jangan share cookies** antara multiple bots/instances di IP yang sama (akan terdeteksi sebagai spam)
 
 ## 📝 Format Cookies File
 
