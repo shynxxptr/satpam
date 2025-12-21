@@ -96,15 +96,30 @@ export function initDisTube(client) {
                         if (spotifyResult) {
                             console.log(`Spotify fallback success: ${spotifyResult.title}`);
                             
-                            // Try play with Spotify result
-                            const searchQuery = `${spotifyResult.spotifyTrack?.artists.join(' ') || ''} ${spotifyResult.title}`;
+                            // Try play with Spotify result - use better search query format
+                            // Use "Artist - Title" format, avoiding duplication
+                            const artist = spotifyResult.spotifyTrack?.artists[0] || '';
+                            const title = spotifyResult.title || spotifyResult.spotifyTrack?.name || '';
+                            // Remove artist name from title if already included to avoid duplication
+                            const cleanTitle = title.replace(new RegExp(`^${artist}\\s*-?\\s*`, 'i'), '').trim();
+                            const searchQuery = cleanTitle ? `${artist} - ${cleanTitle}` : title;
+                            
                             console.log(`Trying to play with search query: "${searchQuery}"`);
+                            
+                            // Mark as fallback to prevent infinite retry
+                            originalQueries.set(guildId, {
+                                ...storedQuery,
+                                isFallback: true
+                            });
                             
                             await distube.play(storedQuery.voiceChannel, searchQuery, {
                                 member: storedQuery.member,
                                 textChannel: null,
                                 skip: false
                             });
+                            
+                            // Wait a bit to ensure queue is created
+                            await new Promise(resolve => setTimeout(resolve, 500));
                             
                             // Notify success
                             const callbacks = errorCallbacks.get(guildId);
@@ -187,7 +202,7 @@ if (spotifyCreds && spotifyCreds.client_id && spotifyCreds.client_secret) {
 const errorCallbacks = new Map(); // guildId -> array of callbacks
 
 // Store original queries for Spotify fallback on YouTube bot detection
-const originalQueries = new Map(); // guildId -> { query, voiceChannel, member }
+const originalQueries = new Map(); // guildId -> { query, voiceChannel, member, isFallback }
 
 /**
  * Search YouTube for query using DisTube
@@ -468,21 +483,40 @@ export const musicPlayer = {
                     console.log('[MusicPlayer] Bot detection in play() - trying Spotify fallback immediately...');
                     const storedQuery = originalQueries.get(guildId);
                     
-                    if (storedQuery && !storedQuery.query.includes('spotify')) {
+                    if (storedQuery && !storedQuery.query.includes('spotify') && !storedQuery.isFallback) {
                         try {
                             const spotifyResult = await searchSpotifyTracks(storedQuery.query);
                             if (spotifyResult) {
                                 console.log(`[MusicPlayer] Spotify fallback success: ${spotifyResult.title}`);
                                 
-                                // Try play with Spotify result
-                                const searchQuery = `${spotifyResult.spotifyTrack?.artists.join(' ') || ''} ${spotifyResult.title}`;
+                                // Try play with Spotify result - use better search query format
+                                const artist = spotifyResult.spotifyTrack?.artists[0] || '';
+                                const title = spotifyResult.title || spotifyResult.spotifyTrack?.name || '';
+                                const cleanTitle = title.replace(new RegExp(`^${artist}\\s*-?\\s*`, 'i'), '').trim();
+                                const searchQuery = cleanTitle ? `${artist} - ${cleanTitle}` : title;
+                                
+                                console.log(`[MusicPlayer] Trying to play with search query: "${searchQuery}"`);
+                                
+                                // Mark as fallback to prevent infinite retry
+                                originalQueries.set(guildId, {
+                                    ...storedQuery,
+                                    isFallback: true
+                                });
+                                
                                 await distube.play(voiceChannel, searchQuery, {
                                     member: member,
                                     textChannel: null,
                                     skip: false
                                 });
                                 
+                                // Wait a bit to ensure queue is created
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                                
                                 const queue = distube.getQueue(guildId);
+                                if (!queue) {
+                                    throw new Error('Gagal membuat queue setelah Spotify fallback');
+                                }
+                                
                                 const song = queue.songs[queue.songs.length - 1];
                                 
                                 if (onErrorCallback) {
@@ -551,15 +585,26 @@ export const musicPlayer = {
                     try {
                         const spotifyResult = await searchSpotifyTracks(query);
                         if (spotifyResult) {
-                            // Try again with Spotify result
-                            const searchQuery = `${spotifyResult.spotifyTrack?.artists.join(' ') || ''} ${spotifyResult.title}`;
+                            // Try again with Spotify result - use better search query format
+                            const artist = spotifyResult.spotifyTrack?.artists[0] || '';
+                            const title = spotifyResult.title || spotifyResult.spotifyTrack?.name || '';
+                            const cleanTitle = title.replace(new RegExp(`^${artist}\\s*-?\\s*`, 'i'), '').trim();
+                            const searchQuery = cleanTitle ? `${artist} - ${cleanTitle}` : title;
+                            
                             await distube.play(voiceChannel, searchQuery, {
                                 member: member,
                                 textChannel: null,
                                 skip: false
                             });
                             
+                            // Wait a bit to ensure queue is created
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            
                             const queue = distube.getQueue(guildId);
+                            if (!queue) {
+                                throw new Error('Gagal membuat queue setelah Spotify fallback');
+                            }
+                            
                             const song = queue.songs[queue.songs.length - 1];
                             
                             return {
