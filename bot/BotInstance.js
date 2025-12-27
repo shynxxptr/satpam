@@ -145,6 +145,13 @@ export class BotInstance {
                         });
                     }
                 });
+
+                this.voiceConnection.on('stateChange', (oldState, newState) => {
+                    console.log(`[Bot #${this.botNumber}] Connection state change: ${oldState.status} -> ${newState.status}`);
+                    if (newState.status === VoiceConnectionStatus.Disconnected) {
+                        console.log(`[Bot #${this.botNumber}] Disconnected from ${channel.id}. Reason: ${newState.reason || 'Unknown'}`);
+                    }
+                });
             }
 
             console.log(`✅ Bot #${this.botNumber} join ke idle channel: ${channel.name} (${channelId})`);
@@ -227,6 +234,13 @@ export class BotInstance {
                         member.voice.setDeaf(true).catch(err => {
                             console.log(`⚠️  Bot #${this.botNumber}: Tidak bisa set deafen: ${err.message}`);
                         });
+                    }
+                });
+
+                this.voiceConnection.on('stateChange', (oldState, newState) => {
+                    console.log(`[Bot #${this.botNumber}] Connection state change: ${oldState.status} -> ${newState.status}`);
+                    if (newState.status === VoiceConnectionStatus.Disconnected) {
+                        console.log(`[Bot #${this.botNumber}] Disconnected from ${channel.id}. Reason: ${newState.reason || 'Unknown'}`);
                     }
                 });
             }
