@@ -4,56 +4,38 @@ import { loadConfig, getBotTokens, getConfigPath } from './config.js';
 /**
  * Check dependencies
  */
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
+/**
+ * Check dependencies
+ */
 export function checkDependencies() {
     console.log('🔍 Checking dependencies...');
-    
-    // Check if node_modules exists
-    if (!fs.existsSync('node_modules/discord.js')) {
-        console.log('  ❌ discord.js - REQUIRED!');
-        console.log('  💡 Install dengan: npm install');
-        return false;
-    }
-    console.log('  ✅ discord.js');
 
-    if (!fs.existsSync('node_modules/dotenv')) {
-        console.log('  ❌ dotenv - REQUIRED!');
-        console.log('  💡 Install dengan: npm install');
-        return false;
-    }
-    console.log('  ✅ dotenv');
+    const dependencies = [
+        { name: 'discord.js', required: true },
+        { name: 'dotenv', required: true },
+        { name: '@discordjs/voice', required: true },
+        { name: 'libsodium-wrappers', required: true, msg: 'REQUIRED untuk voice encryption' },
+        { name: '@snazzah/davey', required: true, msg: 'REQUIRED untuk DAVE protocol' },
+        { name: '@discordjs/opus', required: true, msg: 'REQUIRED untuk audio encoding' }
+    ];
 
-    if (!fs.existsSync('node_modules/@discordjs/voice')) {
-        console.log('  ❌ @discordjs/voice - REQUIRED!');
-        console.log('  💡 Install dengan: npm install @discordjs/voice');
-        return false;
-    }
-    console.log('  ✅ @discordjs/voice');
+    let allOk = true;
 
-    // Check for encryption library (libsodium-wrappers)
-    if (!fs.existsSync('node_modules/libsodium-wrappers')) {
-        console.log('  ⚠️  libsodium-wrappers - REQUIRED untuk voice encryption');
-        console.log('  💡 Install dengan: npm install libsodium-wrappers');
-        return false;
+    for (const dep of dependencies) {
+        try {
+            require.resolve(dep.name);
+            console.log(`  ✅ ${dep.name}${dep.msg ? ` (${dep.msg.split('REQUIRED ')[1] || ''})` : ''}`);
+        } catch (e) {
+            console.log(`  ${dep.required ? '❌' : '⚠️'}  ${dep.name} - ${dep.msg || 'REQUIRED!'}`);
+            console.log(`  💡 Install dengan: npm install ${dep.name}`);
+            if (dep.required) allOk = false;
+        }
     }
-    console.log('  ✅ libsodium-wrappers (voice encryption)');
 
-    // Check for DAVE protocol library
-    if (!fs.existsSync('node_modules/@snazzah/davey')) {
-        console.log('  ⚠️  @snazzah/davey - REQUIRED untuk DAVE protocol');
-        console.log('  💡 Install dengan: npm install @snazzah/davey');
-        return false;
-    }
-    console.log('  ✅ @snazzah/davey (DAVE protocol)');
-
-    // Check for Opus encoder
-    if (!fs.existsSync('node_modules/@discordjs/opus')) {
-        console.log('  ⚠️  @discordjs/opus - REQUIRED untuk audio encoding');
-        console.log('  💡 Install dengan: npm install @discordjs/opus');
-        return false;
-    }
-    console.log('  ✅ @discordjs/opus (audio encoder)');
-
-    return true;
+    return allOk;
 }
 
 /**
@@ -61,7 +43,7 @@ export function checkDependencies() {
  */
 export function checkConfig() {
     console.log('\n🔍 Checking config file...');
-    
+
     try {
         const config = loadConfig(true); // Force reload to ensure latest config
         if (!config) {
@@ -95,7 +77,7 @@ export function checkConfig() {
         const configPath = getConfigPath();
         console.log(`  ✅ config.json ditemukan: ${configPath || 'unknown'}`);
         console.log(`  ✅ ${tokens.length} bot token(s) valid`);
-        
+
         if (config.bot_tokens && config.bot_tokens.length > tokens.length) {
             const placeholderCount = config.bot_tokens.length - tokens.length;
             console.log(`  ⚠️  ${placeholderCount} token(s) masih placeholder/kosong (akan diabaikan)`);
@@ -116,7 +98,7 @@ export function checkConfig() {
 
         if (config.spotify) {
             const spotify = config.spotify;
-            if (spotify.client_id && spotify.client_secret && 
+            if (spotify.client_id && spotify.client_secret &&
                 !spotify.client_id.includes('your_') && !spotify.client_secret.includes('your_')) {
                 console.log(`  ✅ Spotify credentials ditemukan`);
             } else {
@@ -136,7 +118,7 @@ export function checkConfig() {
  */
 export function checkDirectories() {
     console.log('\n🔍 Checking directories...');
-    
+
     const dirs = ['logs', 'backups'];
     let allOk = true;
 
