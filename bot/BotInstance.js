@@ -52,11 +52,12 @@ export class BotInstance {
             
             // Initialize DisTube for music-enabled bot (for better YouTube search/resolve)
             if (this.musicEnabled) {
-                try {
-                    initDisTube(this.client);
-                } catch (error) {
-                    console.error(`❌ Bot #${this.botNumber}: Failed to initialize DisTube:`, error.message);
-                }
+                // try {
+                //     initDisTube(this.client);
+                // } catch (error) {
+                //     console.error(`❌ Bot #${this.botNumber}: Failed to initialize DisTube:`, error.message);
+                // }
+                console.log(`ℹ️  Bot #${this.botNumber}: Music features are currently disabled.`);
             }
             
             // Setup commands
